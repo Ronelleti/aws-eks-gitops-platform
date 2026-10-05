@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api
+  namespace: tasks
+  # On EKS this gets an IRSA annotation so the pod can reach S3 without keys
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: tasks
+  labels: { app: api }
+spec:
+  replicas: 2
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }   # zero-downtime rollouts
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api }
+    spec:
+      serviceAccountName: api
+      # spread replicas across nodes so one node failing doesn't take down the API
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: api }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: api
+          image: tasks-api:0.1.0
+          imagePullPolicy: IfNotPresent      # image is loaded into kind, not pulled
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef: { name: api-config }
+          env:
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: db-credentials, key: username } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: db-credentials, key: password } }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: tasks
+spec:
+  selector: { app: api }
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

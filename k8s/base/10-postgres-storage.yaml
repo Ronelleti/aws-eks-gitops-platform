@@ -1,0 +1,42 @@
+# Static provisioning, done by hand to learn how PV and PVC bind.
+# (On EKS the DB moves to RDS, and other PVCs use a gp3 StorageClass that creates EBS disks automatically.)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: manual
+provisioner: kubernetes.io/no-provisioner   # nothing creates volumes automatically
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 2Gi
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Retain      # keep data if the PVC is deleted
+  hostPath:
+    path: /var/local-data/postgres
+    type: DirectoryOrCreate
+  # hostPath data lives on ONE node, so pin the volume (and therefore the pod) to it
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: ["platform-worker"]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: tasks
+spec:
+  storageClassName: manual
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi

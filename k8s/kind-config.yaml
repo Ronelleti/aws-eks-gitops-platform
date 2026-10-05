@@ -1,0 +1,13 @@
+# Local cluster: 1 control plane + 2 workers (so scheduling, spreading and PDBs mean something)
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: platform
+nodes:
+  - role: control-plane
+    # http://localhost -> NodePort 30080 -> Traefik ingress controller
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8088
+        protocol: TCP
+  - role: worker
+  - role: worker

@@ -1,0 +1,55 @@
+# Zero-trust inside the namespace: deny all incoming traffic, then allow only the real paths:
+# ingress controller -> ui -> api -> postgres
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: tasks
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ui-from-ingress-controller
+  namespace: tasks
+spec:
+  podSelector:
+    matchLabels: { app: ui }
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: traefik }
+      ports:
+        - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-from-ui
+  namespace: tasks
+spec:
+  podSelector:
+    matchLabels: { app: api }
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: ui }
+      ports:
+        - port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-api
+  namespace: tasks
+spec:
+  podSelector:
+    matchLabels: { app: postgres }
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: api }
+      ports:
+        - port: 5432
