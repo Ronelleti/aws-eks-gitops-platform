@@ -37,6 +37,10 @@ module "eks" {
     # networking add-ons must exist BEFORE the nodes, or the nodes never become Ready
     vpc-cni = {
       before_compute = true
+      # Without this the NetworkPolicy objects in the chart are accepted but never enforced
+      configuration_values = jsonencode({
+        enableNetworkPolicy = tostring(var.enable_network_policy)
+      })
     }
     eks-pod-identity-agent = {
       before_compute = true

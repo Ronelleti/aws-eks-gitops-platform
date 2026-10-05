@@ -32,7 +32,11 @@ const pool = new Pool(config.db);
 pool.on('error', (err) => log.error({ err: err.message }, 'idle database connection lost'));
 let schemaReady = false; // set once the tasks table exists
 // On EKS, credentials come from the pod's ServiceAccount (IRSA) — no keys in code
-const s3 = config.s3Bucket ? new S3Client({ region: config.awsRegion }) : null;
+// requestChecksumCalculation WHEN_REQUIRED: newer SDK versions add a CRC32 checksum of the (empty)
+// body to presigned PUT URLs, which makes browser uploads fail with a checksum mismatch.
+const s3 = config.s3Bucket
+  ? new S3Client({ region: config.awsRegion, requestChecksumCalculation: 'WHEN_REQUIRED' })
+  : null;
 
 // ---- Prometheus metrics ----
 promClient.collectDefaultMetrics();
@@ -99,9 +103,9 @@ app.post('/api/tasks', h(async (req, res) => {
 app.patch('/api/tasks/:id', h(async (req, res) => {
   const { title, done } = req.body || {};
   const { rows } = await pool.query(
-      `UPDATE tasks SET title = COALESCE($1, title), done = COALESCE($2, done)
+    `UPDATE tasks SET title = COALESCE($1, title), done = COALESCE($2, done)
      WHERE id = $3 RETURNING *`,
-      [title ?? null, typeof done === 'boolean' ? done : null, req.params.id],
+    [title ?? null, typeof done === 'boolean' ? done : null, req.params.id],
   );
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   res.json(rows[0]);
@@ -123,9 +127,9 @@ app.post('/api/tasks/:id/attachment', requireS3, h(async (req, res) => {
   const { rowCount } = await pool.query('UPDATE tasks SET attachment_key = $1 WHERE id = $2', [key, req.params.id]);
   if (!rowCount) return res.status(404).json({ error: 'not found' });
   const uploadUrl = await getSignedUrl(
-      s3,
-      new PutObjectCommand({ Bucket: config.s3Bucket, Key: key, ContentType: req.body?.contentType }),
-      { expiresIn: 300 },
+    s3,
+    new PutObjectCommand({ Bucket: config.s3Bucket, Key: key, ContentType: req.body?.contentType || 'application/octet-stream' }),
+    { expiresIn: 300 },
   );
   res.json({ uploadUrl, key });
 }));
@@ -134,9 +138,9 @@ app.get('/api/tasks/:id/attachment', requireS3, h(async (req, res) => {
   const { rows } = await pool.query('SELECT attachment_key FROM tasks WHERE id = $1', [req.params.id]);
   if (!rows[0]?.attachment_key) return res.status(404).json({ error: 'no attachment' });
   const downloadUrl = await getSignedUrl(
-      s3,
-      new GetObjectCommand({ Bucket: config.s3Bucket, Key: rows[0].attachment_key }),
-      { expiresIn: 300 },
+    s3,
+    new GetObjectCommand({ Bucket: config.s3Bucket, Key: rows[0].attachment_key }),
+    { expiresIn: 300 },
   );
   res.json({ downloadUrl });
 }));

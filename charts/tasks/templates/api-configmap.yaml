@@ -13,3 +13,4 @@ data:
   LOG_LEVEL: {{ .Values.api.logLevel | quote }}
   APP_ENV: {{ .Values.appEnv | quote }}
   S3_BUCKET: {{ .Values.api.s3Bucket | quote }}
+  AWS_REGION: {{ .Values.awsRegion | quote }}

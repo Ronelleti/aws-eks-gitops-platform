@@ -1,0 +1,17 @@
+# EKS dev: settings maintained by hand. The CI bot only edits tasks.yaml (image tags).
+# Values that only exist after Terraform runs (database host, S3 bucket, VPC CIDR, region)
+# are injected by Terraform straight into the ArgoCD Application, not stored here.
+
+database:
+  ssl: true            # RDS requires TLS
+
+ingress:
+  className: alb       # AWS Load Balancer Controller creates an internet-facing ALB
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip       # ALB sends traffic straight to pod IPs
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+
+networkPolicies:
+  ingressControllerNamespace: ""   # no in-cluster controller: the ALB is outside the cluster

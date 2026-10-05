@@ -1,4 +1,7 @@
 {{- if .Values.networkPolicies.enabled }}
+{{- if and (not .Values.networkPolicies.ingressControllerNamespace) (not .Values.networkPolicies.ingressControllerCIDRs) }}
+{{- fail "networkPolicies: set ingressControllerNamespace or ingressControllerCIDRs, otherwise nothing could reach the UI" }}
+{{- end }}
 # Deny all incoming traffic, then allow only: ingress controller -> ui -> api -> postgres
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -21,9 +24,16 @@ spec:
     matchLabels: { app: ui }
   ingress:
     - from:
+        {{- if .Values.networkPolicies.ingressControllerNamespace }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.networkPolicies.ingressControllerNamespace }}
+        {{- end }}
+        {{- range .Values.networkPolicies.ingressControllerCIDRs }}
+        # an AWS ALB sends traffic from IPs inside the VPC (it is not a pod in a namespace)
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
       ports:
         - port: 8080
 ---

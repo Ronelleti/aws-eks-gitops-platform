@@ -1,6 +1,7 @@
 # Default values. Each environment overrides what it needs in gitops/envs/<env>/tasks.yaml
 
 appEnv: local                # shown in the UI footer
+awsRegion: eu-north-1        # region the API uses for S3 presigned URLs (only matters when api.s3Bucket is set)
 
 api:
   image:
@@ -64,10 +65,15 @@ ingress:
   enabled: true
   className: traefik
   host: ""                   # empty = any host
+  annotations: {}            # controller-specific settings (on EKS: the ALB annotations)
 
 networkPolicies:
   enabled: true
+  # Who may reach the UI. Set at least one of the two:
+  #   ingressControllerNamespace - an in-cluster ingress controller (Traefik on kind)
+  #   ingressControllerCIDRs     - an external load balancer whose traffic comes from VPC IPs (AWS ALB)
   ingressControllerNamespace: traefik
+  ingressControllerCIDRs: []
 
 # Prometheus Operator integration (needs kube-prometheus-stack installed in the cluster)
 monitoring:

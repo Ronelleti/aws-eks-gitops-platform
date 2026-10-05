@@ -2,5 +2,5 @@ apiVersion: v2
 name: tasks
 description: Tasks app (UI + API + optional in-cluster Postgres) for aws-eks-gitops-platform
 type: application
-version: 0.2.0        # chart version: bump when templates change
+version: 0.3.0        # chart version: bump when templates change
 appVersion: "0.1.1"   # app version shown in `helm list`

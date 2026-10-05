@@ -23,8 +23,13 @@ jobs:
         run: |
           for env in gitops/envs/*/; do
             echo "== $env"
-            helm lint charts/tasks -f "$env/tasks.yaml"
+            args=""
+            for f in "$env"*.yaml; do args="$args -f $f"; done
+            # shellcheck disable=SC2086
+            helm lint charts/tasks $args
           done
+      - name: Lint the db-secret chart
+        run: helm lint charts/db-secret --set secretArn=arn:aws:secretsmanager:eu-north-1:000000000000:secret:example
 
   terraform:
     runs-on: ubuntu-latest

@@ -81,11 +81,13 @@ export default function App() {
   // Upload goes straight from the browser to S3 using a presigned URL from the API
   const attach = (task, file) =>
     run(async () => {
+      // the browser must send exactly the Content-Type the presigned URL was signed with
+      const contentType = file.type || 'application/octet-stream';
       const { uploadUrl } = await api(`/tasks/${task.id}/attachment`, {
         method: 'POST',
-        body: JSON.stringify({ filename: file.name, contentType: file.type }),
+        body: JSON.stringify({ filename: file.name, contentType }),
       });
-      const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
       if (!put.ok) throw new Error(`Upload to S3 failed with status ${put.status}`);
     });
 

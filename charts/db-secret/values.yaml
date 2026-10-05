@@ -1,0 +1,7 @@
+# Installed by Terraform (infra/dev), NOT by ArgoCD: the secret's ARN only exists after
+# RDS is created, so it can't be committed to Git.
+region: eu-north-1
+secretArn: ""                  # ARN of the secret RDS created for the master user
+storeName: aws-secrets-manager
+targetSecretName: db-credentials   # the Secret the tasks chart reads (keys: username, password)
+refreshInterval: 1h

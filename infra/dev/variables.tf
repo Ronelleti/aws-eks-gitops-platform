@@ -74,3 +74,46 @@ variable "api_allowed_cidrs" {
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }
+
+# ---- database ----
+variable "rds_instance_class" {
+  type    = string
+  default = "db.t4g.micro"
+}
+
+variable "rds_engine_version" {
+  description = "PostgreSQL major version (16 matches the postgres:16 image used on kind)"
+  type        = string
+  default     = "16"
+}
+
+variable "rds_allocated_storage" {
+  description = "GB of gp3 storage (20 is the minimum)"
+  type        = number
+  default     = 20
+}
+
+variable "rds_storage_encrypted" {
+  description = "Encrypt the database disk with the AWS-managed key (set false only if the organization policy blocks it)"
+  type        = bool
+  default     = true
+}
+
+# ---- cluster ----
+variable "enable_network_policy" {
+  description = "Make the VPC CNI enforce Kubernetes NetworkPolicies. Without it the policies in the chart exist but do nothing."
+  type        = bool
+  default     = true
+}
+
+variable "gitops_repo_url" {
+  description = "Git repository ArgoCD deploys from"
+  type        = string
+  default     = "https://github.com/Ronelleti/aws-eks-gitops-platform.git"
+}
+
+variable "gitops_revision" {
+  description = "Branch ArgoCD follows"
+  type        = string
+  default     = "main"
+}
