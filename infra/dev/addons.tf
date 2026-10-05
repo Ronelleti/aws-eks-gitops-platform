@@ -8,7 +8,7 @@
 
 locals {
   chart_versions = {
-    lbc              = "3.5.0"
+    lbc              = "3.5.0" # 3.6.0 was published minutes before first use and not yet served by aws.github.io
     metrics_server   = "3.14.0"
     external_secrets = "2.11.0"
     argocd           = "10.9.6"
@@ -23,6 +23,7 @@ resource "helm_release" "lbc" {
   chart      = "aws-load-balancer-controller"
   version    = local.chart_versions.lbc
   namespace  = "kube-system"
+  timeout    = 600 # first run: every image is pulled onto fresh nodes, and 300s (the default) can be too short
 
   values = [yamlencode({
     clusterName  = module.eks.cluster_name
@@ -57,6 +58,7 @@ resource "helm_release" "external_secrets" {
   chart            = "external-secrets"
   version          = local.chart_versions.external_secrets
   namespace        = "external-secrets"
+  timeout          = 600 # first run: every image is pulled onto fresh nodes, and 300s (the default) can be too short
   create_namespace = true
 
   values = [yamlencode({
@@ -72,6 +74,7 @@ resource "helm_release" "argocd" {
   chart            = "argo-cd"
   version          = local.chart_versions.argocd
   namespace        = "argocd"
+  timeout          = 600 # first run: every image is pulled onto fresh nodes, and 300s (the default) can be too short
   create_namespace = true
 
   # no SSO login or notifications in a lab: saves two pods and memory
