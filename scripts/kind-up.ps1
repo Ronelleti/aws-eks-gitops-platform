@@ -63,7 +63,8 @@ kubectl create secret generic grafana-admin -n monitoring `
 Remove-Variable grafanaPw
 
 Step "Installing ArgoCD"
-helm upgrade --install argocd argo/argo-cd --namespace argocd --create-namespace --wait; Check
+helm upgrade --install argocd argo/argo-cd --namespace argocd --create-namespace `
+  --set dex.enabled=false --set notifications.enabled=false --wait; Check
 
 Step "Bootstrapping: root Application (app-of-apps) -> ArgoCD deploys everything else from GitHub"
 kubectl apply -f gitops/bootstrap/root-kind.yaml; Check

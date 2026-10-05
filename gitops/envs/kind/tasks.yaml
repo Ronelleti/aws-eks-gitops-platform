@@ -6,8 +6,13 @@ api:
   image:
     tag: "0.1.1"
 
+    autoscaling:
+      minReplicas: 1
+    pdb:
+      enabled: false
+
 ui:
-  replicas: 3
+  replicas: 1
   image:
     tag: "0.1.0"
 

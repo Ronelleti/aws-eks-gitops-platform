@@ -23,6 +23,7 @@ prometheus:
       limits: { memory: 1Gi }
 
 alertmanager:
+  enabled: false
   alertmanagerSpec:
     resources:
       requests: { cpu: 10m, memory: 32Mi }
