@@ -175,7 +175,12 @@ function Shell() {
           <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} />{theme === 'dark' ? 'Light theme' : 'Dark theme'}
           </button>
-          {info && <p className="rail-version mono" title="The version of the API that answered">{String(info.version).slice(0, 8)} in {info.env}</p>}
+          {info && (
+            <p className="rail-version" title="The version of the API that answered, and the environment it runs in">
+              <span>Version <b className="mono">{String(info.version).slice(0, 8)}</b></span>
+              <span>Environment <b>{info.env}</b></span>
+            </p>
+          )}
         </div>
       </aside>
 

@@ -10,7 +10,9 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # 5433 on the host, so it never clashes with a Postgres you already run on 5432.
+      # 127.0.0.1 keeps it off the network: only this computer can connect (psql -h localhost -p 5433).
+      - "127.0.0.1:${PG_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tasks -d tasks"]
       interval: 5s
@@ -25,7 +27,8 @@ services:
       LOG_LEVEL: debug
       APP_ENV: local
     ports:
-      - "3000:3000"
+      # Change a port without editing this file:  API_PORT=3001 UI_PORT=8081 PG_PORT=5434 docker compose up --build
+      - "127.0.0.1:${API_PORT:-3000}:3000"
     depends_on:
       db:
         condition: service_healthy
@@ -35,7 +38,7 @@ services:
     environment:
       API_UPSTREAM: http://api:3000
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${UI_PORT:-8080}:8080"
     depends_on:
       - api
 
