@@ -4,11 +4,11 @@ appEnv: eks-dev
 api:
   image:
     repository: 508193318669.dkr.ecr.eu-north-1.amazonaws.com/tasks-api
-    tag: "5c66a1ccc8f4bfb67ce3f901109f003ccad99216"
+    tag: "9c279565d286ba311b42d139d276799852afba19"
 ui:
   image:
     repository: 508193318669.dkr.ecr.eu-north-1.amazonaws.com/tasks-ui
-    tag: "5c66a1ccc8f4bfb67ce3f901109f003ccad99216"
+    tag: "9c279565d286ba311b42d139d276799852afba19"
 # the database is RDS in AWS, not a pod
 postgres:
   enabled: false
