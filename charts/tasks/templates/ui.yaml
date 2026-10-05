@@ -2,25 +2,30 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ui
-  namespace: tasks
-  labels: { app: ui }
+  labels:
+    app: ui
+    {{- include "tasks.labels" . | nindent 4 }}
 spec:
-  replicas: 2
+  replicas: {{ .Values.ui.replicas }}
   strategy:
     rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
   selector:
     matchLabels: { app: ui }
   template:
     metadata:
-      labels: { app: ui }
+      labels:
+        app: ui
+        {{- include "tasks.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/ui-configmap.yaml") . | sha256sum }}
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 101           # nginx user in the unprivileged image
+        runAsUser: 101
       containers:
         - name: ui
-          image: tasks-ui:0.1.0
-          imagePullPolicy: IfNotPresent
+          image: "{{ .Values.ui.image.repository }}:{{ .Values.ui.image.tag }}"
+          imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 8080
@@ -33,8 +38,7 @@ spec:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 10
           resources:
-            requests: { cpu: 20m, memory: 32Mi }
-            limits: { cpu: 250m, memory: 128Mi }
+            {{- toYaml .Values.ui.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: ["ALL"] }
@@ -43,7 +47,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: ui
-  namespace: tasks
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
 spec:
   selector: { app: ui }
   ports:

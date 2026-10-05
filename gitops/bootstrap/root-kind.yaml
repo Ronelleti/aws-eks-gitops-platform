@@ -1,0 +1,22 @@
+# App-of-apps: the ONLY thing applied by hand. ArgoCD then manages every
+# Application found in gitops/apps/kind/ - add a file there and it gets deployed.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Ronelleti/aws-eks-gitops-platform.git
+    targetRevision: main
+    path: gitops/apps/kind
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

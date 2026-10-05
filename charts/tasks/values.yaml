@@ -1,0 +1,70 @@
+# Default values. Each environment overrides what it needs in gitops/envs/<env>/tasks.yaml
+
+appEnv: local                # shown in the UI footer
+
+api:
+  image:
+    repository: tasks-api
+    tag: "0.1.1"
+    pullPolicy: IfNotPresent
+  replicas: 2                # ignored when autoscaling is enabled (the HPA owns the count)
+  logLevel: info
+  s3Bucket: ""               # empty = attachments disabled
+  serviceAccount:
+    annotations: {}          # on EKS: eks.amazonaws.com/role-arn for IRSA
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilization: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+ui:
+  image:
+    repository: tasks-ui
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits: { cpu: 250m, memory: 128Mi }
+
+# Where the API finds its database (in-cluster Postgres on kind, RDS on EKS)
+database:
+  host: postgres
+  port: 5432
+  name: tasks
+  ssl: false
+  # Secret with keys "username" and "password". Never in Git:
+  # created by scripts/kind-up.ps1 locally, by External Secrets on EKS.
+  credentialsSecret: db-credentials
+
+# In-cluster Postgres StatefulSet. Disable on EKS (RDS is used instead).
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  storage:
+    size: 2Gi
+    storageClassName: manual
+    # Hand-made StorageClass + PV (kind only). On EKS a gp3 StorageClass provisions disks automatically.
+    manualPV:
+      enabled: true
+      hostPath: /var/local-data/postgres
+      node: platform-worker
+
+ingress:
+  enabled: true
+  className: traefik
+  host: ""                   # empty = any host
+
+networkPolicies:
+  enabled: true
+  ingressControllerNamespace: traefik

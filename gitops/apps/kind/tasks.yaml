@@ -1,0 +1,27 @@
+# The tasks app: Helm chart from charts/tasks + kind-specific values
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tasks
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # deleting the Application deletes its resources
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Ronelleti/aws-eks-gitops-platform.git
+    targetRevision: main
+    path: charts/tasks
+    helm:
+      releaseName: tasks
+      valueFiles:
+        - ../../gitops/envs/kind/tasks.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tasks
+  syncPolicy:
+    automated:
+      prune: true      # resources removed from Git are deleted from the cluster
+      selfHeal: true   # manual changes in the cluster are reverted to match Git
+    syncOptions:
+      - CreateNamespace=true

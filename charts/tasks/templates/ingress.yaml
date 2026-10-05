@@ -1,13 +1,17 @@
-# One public entry point: everything goes to the UI, and nginx in the UI proxies /api
+{{- if .Values.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: tasks
-  namespace: tasks
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
 spec:
-  ingressClassName: traefik
+  ingressClassName: {{ .Values.ingress.className }}
   rules:
-    - http:
+    - {{- with .Values.ingress.host }}
+      host: {{ . | quote }}
+      {{- end }}
+      http:
         paths:
           - path: /
             pathType: Prefix
@@ -15,3 +19,4 @@ spec:
               service:
                 name: ui
                 port: { name: http }
+{{- end }}

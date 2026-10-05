@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui-config
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
+data:
+  API_UPSTREAM: "http://api:3000"                     # nginx proxies /api here
+  NGINX_ENTRYPOINT_WORKER_PROCESSES_AUTOTUNE: "1"     # worker count follows the CPU limit

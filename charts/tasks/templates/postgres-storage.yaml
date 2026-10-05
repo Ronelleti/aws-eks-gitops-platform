@@ -1,0 +1,34 @@
+{{- if and .Values.postgres.enabled .Values.postgres.storage.manualPV.enabled }}
+# Static provisioning (kind only). Cluster-scoped objects: no namespace.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.postgres.storage.storageClassName }}
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
+spec:
+  storageClassName: {{ .Values.postgres.storage.storageClassName }}
+  capacity:
+    storage: {{ .Values.postgres.storage.size }}
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: {{ .Values.postgres.storage.manualPV.hostPath }}
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [{{ .Values.postgres.storage.manualPV.node | quote }}]
+{{- end }}

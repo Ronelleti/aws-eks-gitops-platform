@@ -1,10 +1,11 @@
-# Zero-trust inside the namespace: deny all incoming traffic, then allow only the real paths:
-# ingress controller -> ui -> api -> postgres
+{{- if .Values.networkPolicies.enabled }}
+# Deny all incoming traffic, then allow only: ingress controller -> ui -> api -> postgres
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-ingress
-  namespace: tasks
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
 spec:
   podSelector: {}
   policyTypes: ["Ingress"]
@@ -13,14 +14,16 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: ui-from-ingress-controller
-  namespace: tasks
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels: { app: ui }
   ingress:
     - from:
         - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: traefik }
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicies.ingressControllerNamespace }}
       ports:
         - port: 8080
 ---
@@ -28,7 +31,8 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: api-from-ui
-  namespace: tasks
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels: { app: api }
@@ -38,12 +42,14 @@ spec:
             matchLabels: { app: ui }
       ports:
         - port: 3000
+{{- if .Values.postgres.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: postgres-from-api
-  namespace: tasks
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels: { app: postgres }
@@ -53,3 +59,5 @@ spec:
             matchLabels: { app: api }
       ports:
         - port: 5432
+{{- end }}
+{{- end }}

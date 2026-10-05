@@ -1,7 +1,11 @@
-# Creates the local kind cluster and deploys the whole app.
+# Creates the local kind cluster, installs the platform (Traefik, metrics-server, ArgoCD)
+# and hands the app over to ArgoCD, which deploys it from GitHub.
 # Usage (from the repo root):  .\scripts\kind-up.ps1
 $ErrorActionPreference = "Stop"
-$version = "0.1.0"
+
+# Must match the tags in gitops/envs/kind/tasks.yaml
+$apiVersion = "0.1.1"
+$uiVersion = "0.1.0"
 
 function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Check() { if ($LASTEXITCODE -ne 0) { throw "Previous command failed (exit code $LASTEXITCODE)" } }
@@ -11,10 +15,13 @@ $existing = kind get clusters
 if ($existing -contains "platform") { Write-Host "Cluster already exists, reusing it" }
 else { kind create cluster --config k8s/kind-config.yaml; Check }
 
-Step "Installing Traefik ingress controller (NodePort 30080 -> http://localhost)"
+Step "Adding Helm repositories"
 helm repo add traefik https://traefik.github.io/charts --force-update; Check
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ --force-update; Check
+helm repo add argo https://argoproj.github.io/argo-helm --force-update; Check
 helm repo update; Check
+
+Step "Installing Traefik ingress controller (NodePort 30080 -> http://localhost:8088)"
 helm upgrade --install traefik traefik/traefik --namespace traefik --create-namespace `
   --set service.type=NodePort --set ports.web.nodePort=30080 --wait; Check
 
@@ -22,27 +29,40 @@ Step "Installing metrics-server (needed by the HPA)"
 helm upgrade --install metrics-server metrics-server/metrics-server --namespace kube-system `
   --set "args={--kubelet-insecure-tls}" --wait; Check
 
-Step "Building images $version and loading them into kind"
-docker build -t tasks-api:$version --build-arg APP_VERSION=$version apps/api; Check
-docker build -t tasks-ui:$version apps/ui; Check
-kind load docker-image tasks-api:$version tasks-ui:$version --name platform; Check
+Step "Building images and loading them into kind (api $apiVersion, ui $uiVersion)"
+docker build -t tasks-api:$apiVersion --build-arg APP_VERSION=$apiVersion apps/api; Check
+docker build -t tasks-ui:$uiVersion apps/ui; Check
+kind load docker-image tasks-api:$apiVersion tasks-ui:$uiVersion --name platform; Check
 
-Step "Creating namespace and the db-credentials Secret from AWS Secrets Manager"
-kubectl apply -f k8s/base/00-namespace.yaml; Check
+Step "Creating the db-credentials Secret from AWS Secrets Manager (never stored in Git)"
+kubectl create namespace tasks --dry-run=client -o yaml | kubectl apply -f -; Check
 $pw = aws secretsmanager get-secret-value --secret-id aws-eks-gitops-platform/local/db-password --query SecretString --output text; Check
-# the Secret is created from AWS, never stored in Git
 kubectl create secret generic db-credentials -n tasks `
   --from-literal=username=tasks --from-literal=password=$pw `
   --dry-run=client -o yaml | kubectl apply -f -; Check
 Remove-Variable pw
 
-Step "Applying manifests"
-kubectl apply -f k8s/base/; Check
+Step "Installing ArgoCD"
+helm upgrade --install argocd argo/argo-cd --namespace argocd --create-namespace --wait; Check
 
-Step "Waiting for pods to be ready"
-kubectl rollout status statefulset/postgres -n tasks --timeout=180s; Check
-kubectl rollout status deployment/api -n tasks --timeout=180s; Check
-kubectl rollout status deployment/ui -n tasks --timeout=180s; Check
+Step "Bootstrapping: root Application (app-of-apps) -> ArgoCD deploys everything else from GitHub"
+kubectl apply -f gitops/bootstrap/root-kind.yaml; Check
+
+Step "Waiting for ArgoCD to sync and the app to become Healthy (up to 5 minutes)"
+$ErrorActionPreference = "Continue"   # the Application may not exist yet; don't stop on that
+$deadline = (Get-Date).AddMinutes(5)
+do {
+  Start-Sleep -Seconds 10
+  $sync = kubectl get application tasks -n argocd -o jsonpath="{.status.sync.status}" 2>$null
+  $health = kubectl get application tasks -n argocd -o jsonpath="{.status.health.status}" 2>$null
+  Write-Host "  tasks app: sync=$sync health=$health"
+} until ($health -eq "Healthy" -or (Get-Date) -gt $deadline)
+$ErrorActionPreference = "Stop"
 
 kubectl get pods -n tasks -o wide
-Write-Host "`nDone. Open http://localhost:8088" -ForegroundColor Green
+
+$b64 = kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}"
+$argoPw = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64))
+Write-Host "`nApp:    http://localhost:8088" -ForegroundColor Green
+Write-Host "ArgoCD: run  kubectl port-forward -n argocd svc/argocd-server 8443:443" -ForegroundColor Green
+Write-Host "        then open https://localhost:8443  (user: admin, password: $argoPw)" -ForegroundColor Green

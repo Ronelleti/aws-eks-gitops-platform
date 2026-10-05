@@ -1,0 +1,11 @@
+# kind (local) environment. Only what differs from charts/tasks/values.yaml.
+# To deploy a new version: change a tag here, commit, push. ArgoCD does the rest.
+appEnv: kind
+
+api:
+  image:
+    tag: "0.1.1"
+
+ui:
+  image:
+    tag: "0.1.0"
