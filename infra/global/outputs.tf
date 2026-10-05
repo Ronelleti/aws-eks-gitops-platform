@@ -3,7 +3,7 @@ output "ecr_repository_urls" {
   value       = { for name, repo in aws_ecr_repository.app : name => repo.repository_url }
 }
 
-output "github_ci_role_arn" {
-  description = "Role ARN for the GitHub Actions workflow (aws-actions/configure-aws-credentials)"
-  value       = aws_iam_role.github_ci.arn
+output "github_ci_user_name" {
+  description = "IAM user for GitHub Actions; create its access key with the AWS CLI (see README steps)"
+  value       = aws_iam_user.github_ci.name
 }

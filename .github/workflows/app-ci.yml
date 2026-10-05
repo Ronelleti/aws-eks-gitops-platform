@@ -17,7 +17,6 @@ concurrency:
 
 env:
   AWS_REGION: eu-north-1
-  AWS_ROLE_ARN: arn:aws:iam::508193318669:role/aws-eks-gitops-platform-github-ci
   ECR_REGISTRY: 508193318669.dkr.ecr.eu-north-1.amazonaws.com
   # only pushes to main publish images; pull requests just build
   PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
@@ -28,7 +27,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # lets the job request a GitHub OIDC token for AWS
     strategy:
       fail-fast: false
       matrix:
@@ -36,11 +34,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Log in to AWS (OIDC, no stored keys)
+      # Keys of a dedicated IAM user that can ONLY push to our ECR repos
+      # (the account's SCP blocks the keyless OIDC setup). Stored as GitHub secrets.
+      - name: Log in to AWS
         if: env.PUBLISH == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to ECR
