@@ -1,19 +1,49 @@
+# Postgres as a StatefulSet: stable pod name (postgres-0), stable storage (data-postgres-0),
+# and a headless Service that gives the pod its own DNS name.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: tasks
+spec:
+  clusterIP: None            # headless: DNS returns the pod IP directly (postgres-0.postgres-headless)
+  selector: { app: postgres }
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+# Normal Service that clients use (DB_HOST=postgres stays the same)
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: tasks
+spec:
+  selector: { app: postgres }
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: postgres
   namespace: tasks
   labels: { app: postgres }
 spec:
+  serviceName: postgres-headless
   replicas: 1
-  strategy:
-    type: Recreate          # RWO volume: the old pod must stop before the new one mounts it
   selector:
     matchLabels: { app: postgres }
+  # keep the data PVC even if the StatefulSet is deleted or scaled down
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
   template:
     metadata:
       labels: { app: postgres }
     spec:
+      terminationGracePeriodSeconds: 30   # give Postgres time to shut down cleanly
       containers:
         - name: postgres
           image: postgres:16-alpine
@@ -43,18 +73,13 @@ spec:
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { memory: 512Mi }
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: postgres-data
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres
-  namespace: tasks
-spec:
-  selector: { app: postgres }
-  ports:
-    - port: 5432
-      targetPort: 5432
+  # each replica gets its own PVC named <template>-<pod>: data-postgres-0
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: manual
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

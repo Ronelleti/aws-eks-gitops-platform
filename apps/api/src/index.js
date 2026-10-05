@@ -28,6 +28,9 @@ const config = {
 // JSON logs to stdout -> collected by Fluent Bit -> Elasticsearch
 const log = pino({ level: config.logLevel });
 const pool = new Pool(config.db);
+// Without this, a dropped idle DB connection (e.g. Postgres restart) would crash the process
+pool.on('error', (err) => log.error({ err: err.message }, 'idle database connection lost'));
+let schemaReady = false; // set once the tasks table exists
 // On EKS, credentials come from the pod's ServiceAccount (IRSA) — no keys in code
 const s3 = config.s3Bucket ? new S3Client({ region: config.awsRegion }) : null;
 
@@ -57,10 +60,16 @@ const h = (fn) => (req, res, next) => fn(req, res).catch(next);
 
 // ---- probes & metrics ----
 app.get('/healthz', (req, res) => res.json({ status: 'ok' })); // liveness: process is up
-app.get('/readyz', h(async (req, res) => { // readiness: DB reachable
-  await pool.query('SELECT 1');
-  res.json({ status: 'ready' });
-}));
+// readiness: only receive traffic when the DB is reachable and the schema exists
+app.get('/readyz', async (req, res) => {
+  try {
+    if (!schemaReady) throw new Error('schema not initialized yet');
+    await pool.query('SELECT 1');
+    res.json({ status: 'ready' });
+  } catch (err) {
+    res.status(503).json({ status: 'not ready', reason: err.message });
+  }
+});
 app.get('/metrics', h(async (req, res) => {
   res.set('Content-Type', promClient.register.contentType);
   res.end(await promClient.register.metrics());
@@ -90,9 +99,9 @@ app.post('/api/tasks', h(async (req, res) => {
 app.patch('/api/tasks/:id', h(async (req, res) => {
   const { title, done } = req.body || {};
   const { rows } = await pool.query(
-    `UPDATE tasks SET title = COALESCE($1, title), done = COALESCE($2, done)
+      `UPDATE tasks SET title = COALESCE($1, title), done = COALESCE($2, done)
      WHERE id = $3 RETURNING *`,
-    [title ?? null, typeof done === 'boolean' ? done : null, req.params.id],
+      [title ?? null, typeof done === 'boolean' ? done : null, req.params.id],
   );
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   res.json(rows[0]);
@@ -114,9 +123,9 @@ app.post('/api/tasks/:id/attachment', requireS3, h(async (req, res) => {
   const { rowCount } = await pool.query('UPDATE tasks SET attachment_key = $1 WHERE id = $2', [key, req.params.id]);
   if (!rowCount) return res.status(404).json({ error: 'not found' });
   const uploadUrl = await getSignedUrl(
-    s3,
-    new PutObjectCommand({ Bucket: config.s3Bucket, Key: key, ContentType: req.body?.contentType }),
-    { expiresIn: 300 },
+      s3,
+      new PutObjectCommand({ Bucket: config.s3Bucket, Key: key, ContentType: req.body?.contentType }),
+      { expiresIn: 300 },
   );
   res.json({ uploadUrl, key });
 }));
@@ -125,9 +134,9 @@ app.get('/api/tasks/:id/attachment', requireS3, h(async (req, res) => {
   const { rows } = await pool.query('SELECT attachment_key FROM tasks WHERE id = $1', [req.params.id]);
   if (!rows[0]?.attachment_key) return res.status(404).json({ error: 'no attachment' });
   const downloadUrl = await getSignedUrl(
-    s3,
-    new GetObjectCommand({ Bucket: config.s3Bucket, Key: rows[0].attachment_key }),
-    { expiresIn: 300 },
+      s3,
+      new GetObjectCommand({ Bucket: config.s3Bucket, Key: rows[0].attachment_key }),
+      { expiresIn: 300 },
   );
   res.json({ downloadUrl });
 }));
@@ -138,9 +147,13 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   res.status(500).json({ error: 'internal error' });
 });
 
-// ---- startup: wait for DB, create schema, listen ----
+// ---- startup ----
+// The HTTP server starts IMMEDIATELY, so the liveness probe (/healthz) passes even while
+// the DB is down. Readiness (/readyz) stays 503 until the DB is up, so no traffic arrives early.
+// Liveness must never depend on another service, or a DB outage restarts every API pod.
 async function initDb() {
-  for (let attempt = 1; attempt <= 15; attempt++) {
+  let delay = 1000;
+  for (;;) {
     try {
       await pool.query(`CREATE TABLE IF NOT EXISTS tasks (
         id SERIAL PRIMARY KEY,
@@ -149,34 +162,28 @@ async function initDb() {
         attachment_key TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )`);
+      schemaReady = true;
       log.info('database ready');
       return;
     } catch (err) {
-      log.warn({ attempt, err: err.message }, 'database not ready, retrying in 2s');
-      await new Promise((r) => setTimeout(r, 2000));
+      log.warn({ err: err.message, retryInMs: delay }, 'database not ready, retrying');
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 2, 15000); // exponential backoff, max 15s
     }
   }
-  throw new Error('database unavailable after 15 attempts');
 }
 
-async function main() {
-  await initDb();
-  const server = app.listen(config.port, () => log.info({ port: config.port }, 'api listening'));
+const server = app.listen(config.port, () => log.info({ port: config.port }, 'api listening'));
+initDb();
 
-  // graceful shutdown: Kubernetes sends SIGTERM before killing the pod
-  const shutdown = (signal) => {
-    log.info({ signal }, 'shutting down');
-    server.close(async () => {
-      await pool.end();
-      process.exit(0);
-    });
-    setTimeout(() => process.exit(1), 10000).unref();
-  };
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
-}
-
-main().catch((err) => {
-  log.fatal({ err }, 'startup failed');
-  process.exit(1);
-});
+// graceful shutdown: Kubernetes sends SIGTERM before killing the pod
+const shutdown = (signal) => {
+  log.info({ signal }, 'shutting down');
+  server.close(async () => {
+    await pool.end();
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000).unref();
+};
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

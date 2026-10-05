@@ -1,4 +1,5 @@
 # Static provisioning, done by hand to learn how PV and PVC bind.
+# The PVC itself is NOT here: the StatefulSet's volumeClaimTemplate creates it (data-postgres-0).
 # (On EKS the DB moves to RDS, and other PVCs use a gp3 StorageClass that creates EBS disks automatically.)
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -28,15 +29,3 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values: ["platform-worker"]
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-data
-  namespace: tasks
-spec:
-  storageClassName: manual
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 2Gi

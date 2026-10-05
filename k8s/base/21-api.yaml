@@ -34,7 +34,7 @@ spec:
         runAsUser: 1000
       containers:
         - name: api
-          image: tasks-api:0.1.0
+          image: tasks-api:0.1.1
           imagePullPolicy: IfNotPresent      # image is loaded into kind, not pulled
           ports:
             - name: http

@@ -40,7 +40,7 @@ Step "Applying manifests"
 kubectl apply -f k8s/base/; Check
 
 Step "Waiting for pods to be ready"
-kubectl rollout status deployment/postgres -n tasks --timeout=180s; Check
+kubectl rollout status statefulset/postgres -n tasks --timeout=180s; Check
 kubectl rollout status deployment/api -n tasks --timeout=180s; Check
 kubectl rollout status deployment/ui -n tasks --timeout=180s; Check
 
