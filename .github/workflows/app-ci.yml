@@ -55,6 +55,7 @@ jobs:
         with:
           context: apps/${{ matrix.app }}
           push: ${{ env.PUBLISH == 'true' }}
+          # plain image (no attestation index), so ECR's scan-on-push can scan it
           provenance: false
           # tag = full commit SHA: unique per build, and ECR tags are immutable
           tags: ${{ env.ECR_REGISTRY }}/tasks-${{ matrix.app }}:${{ github.sha }}
@@ -69,7 +70,22 @@ jobs:
           REPO: tasks-${{ matrix.app }}
           TAG: ${{ github.sha }}
         run: |
-          aws ecr wait image-scan-complete --repository-name "$REPO" --image-id imageTag="$TAG"
+          # The scan starts a few seconds AFTER the push, and its record doesn't exist before that.
+          # "aws ecr wait" fails immediately on that, so we poll ourselves for up to 5 minutes.
+          status=""
+          for attempt in $(seq 1 30); do
+            status=$(aws ecr describe-image-scan-findings --repository-name "$REPO" --image-id imageTag="$TAG" \
+              --query 'imageScanStatus.status' --output text 2>/dev/null || echo "NOT_STARTED")
+            echo "scan status: $status (attempt $attempt/30)"
+            [ "$status" = "COMPLETE" ] && break
+            [ "$status" = "FAILED" ] && break
+            sleep 10
+          done
+          if [ "$status" != "COMPLETE" ]; then
+            echo "::error::ECR scan of $REPO:$TAG did not complete (status: $status)"
+            exit 1
+          fi
+
           aws ecr describe-image-scan-findings --repository-name "$REPO" --image-id imageTag="$TAG" \
             --query 'imageScanFindings.findingSeverityCounts' --output table || true
           critical=$(aws ecr describe-image-scan-findings --repository-name "$REPO" --image-id imageTag="$TAG" \
