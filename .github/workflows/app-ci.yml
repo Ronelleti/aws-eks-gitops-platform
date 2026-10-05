@@ -72,9 +72,11 @@ jobs:
         run: |
           # The scan starts a few seconds AFTER the push, and its record doesn't exist before that.
           # "aws ecr wait" fails immediately on that, so we poll ourselves for up to 5 minutes.
+          # --no-paginate: an image with many findings spans several response pages, and --query
+          # runs once PER PAGE ("COMPLETE" then "None" ...), which breaks the comparisons below.
           status=""
           for attempt in $(seq 1 30); do
-            status=$(aws ecr describe-image-scan-findings --repository-name "$REPO" --image-id imageTag="$TAG" \
+            status=$(aws ecr describe-image-scan-findings --no-paginate --repository-name "$REPO" --image-id imageTag="$TAG" \
               --query 'imageScanStatus.status' --output text 2>/dev/null || echo "NOT_STARTED")
             echo "scan status: $status (attempt $attempt/30)"
             [ "$status" = "COMPLETE" ] && break
@@ -86,9 +88,9 @@ jobs:
             exit 1
           fi
 
-          aws ecr describe-image-scan-findings --repository-name "$REPO" --image-id imageTag="$TAG" \
+          aws ecr describe-image-scan-findings --no-paginate --repository-name "$REPO" --image-id imageTag="$TAG" \
             --query 'imageScanFindings.findingSeverityCounts' --output table || true
-          critical=$(aws ecr describe-image-scan-findings --repository-name "$REPO" --image-id imageTag="$TAG" \
+          critical=$(aws ecr describe-image-scan-findings --no-paginate --repository-name "$REPO" --image-id imageTag="$TAG" \
             --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text)
           if [ "$critical" != "None" ] && [ "$critical" -gt 0 ]; then
             echo "::error::$REPO:$TAG has $critical CRITICAL vulnerabilities - not promoting it"
