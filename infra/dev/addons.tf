@@ -8,7 +8,7 @@
 
 locals {
   chart_versions = {
-    lbc              = "3.6.0"
+    lbc              = "3.5.0"
     metrics_server   = "3.14.0"
     external_secrets = "2.11.0"
     argocd           = "10.9.6"
