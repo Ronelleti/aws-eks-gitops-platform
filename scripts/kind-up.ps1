@@ -22,8 +22,12 @@ helm repo add argo https://argoproj.github.io/argo-helm --force-update; Check
 helm repo update; Check
 
 Step "Installing Traefik ingress controller (NodePort 30080 -> http://localhost:8088)"
+# publishedService off + fixed ingress IP: kind has no cloud load balancer, so without this
+# the Ingress never gets an address and ArgoCD reports the app as "Progressing" forever
 helm upgrade --install traefik traefik/traefik --namespace traefik --create-namespace `
-  --set service.type=NodePort --set ports.web.nodePort=30080 --wait; Check
+  --set service.type=NodePort --set ports.web.nodePort=30080 `
+  --set providers.kubernetesIngress.publishedService.enabled=false `
+  --set "additionalArguments={--providers.kubernetesingress.ingressendpoint.ip=127.0.0.1}" --wait; Check
 
 Step "Installing metrics-server (needed by the HPA)"
 helm upgrade --install metrics-server metrics-server/metrics-server --namespace kube-system `
