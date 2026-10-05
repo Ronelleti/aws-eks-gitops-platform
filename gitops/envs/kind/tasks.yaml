@@ -12,4 +12,4 @@ ui:
     tag: "0.1.0"
 
 networkPolicies:
-  enabled: false
+  enabled: true
