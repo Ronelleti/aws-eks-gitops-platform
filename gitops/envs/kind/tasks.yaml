@@ -10,3 +10,6 @@ ui:
   replicas: 3
   image:
     tag: "0.1.0"
+
+networkPolicies:
+  enabled: false
