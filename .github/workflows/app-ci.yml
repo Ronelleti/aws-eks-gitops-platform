@@ -93,6 +93,11 @@ jobs:
           critical=$(aws ecr describe-image-scan-findings --no-paginate --repository-name "$REPO" --image-id imageTag="$TAG" \
             --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text)
           if [ "$critical" != "None" ] && [ "$critical" -gt 0 ]; then
+            echo "CRITICAL findings (CVE, package, installed version):"
+            # deliberately paginated: this lists the findings from every page
+            aws ecr describe-image-scan-findings --repository-name "$REPO" --image-id imageTag="$TAG" \
+              --query "imageScanFindings.findings[?severity=='CRITICAL'].[name, attributes[?key=='package_name'] | [0].value, attributes[?key=='package_version'] | [0].value]" \
+              --output text | grep -v '^None$' || true
             echo "::error::$REPO:$TAG has $critical CRITICAL vulnerabilities - not promoting it"
             exit 1
           fi

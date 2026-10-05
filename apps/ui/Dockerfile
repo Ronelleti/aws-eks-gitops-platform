@@ -8,7 +8,9 @@ RUN npm run build
 
 # ---- runtime: nginx serves static files and proxies /api ----
 # unprivileged image: runs as non-root and listens on 8080
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+# alpine-slim: only nginx itself (no XSLT/GeoIP/image-filter modules we don't use) = fewer packages = fewer CVEs.
+# Bump this when the CI security gate starts failing: old base images collect CVEs over time.
+FROM nginxinc/nginx-unprivileged:1.30.5-alpine-slim
 # default upstream for docker-compose; Kubernetes overrides it via env / ConfigMap
 ENV API_UPSTREAM=http://api:3000
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
