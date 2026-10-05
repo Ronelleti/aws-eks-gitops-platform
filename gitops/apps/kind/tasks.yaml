@@ -25,3 +25,9 @@ spec:
       selfHeal: true   # manual changes in the cluster are reverted to match Git
     syncOptions:
       - CreateNamespace=true
+      # the ServiceMonitor/PrometheusRule types only exist once the monitoring app installed
+      # its CRDs; skip the dry-run for them instead of failing the whole sync
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff: { duration: 15s, factor: 2, maxDuration: 3m }

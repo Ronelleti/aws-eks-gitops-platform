@@ -42,6 +42,26 @@ spec:
             matchLabels: { app: ui }
       ports:
         - port: 3000
+{{- if .Values.monitoring.enabled }}
+---
+# Let Prometheus scrape the API's /metrics endpoint
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-from-prometheus
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app: api }
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.monitoring.namespace }}
+      ports:
+        - port: 3000
+{{- end }}
 {{- if .Values.postgres.enabled }}
 ---
 apiVersion: networking.k8s.io/v1

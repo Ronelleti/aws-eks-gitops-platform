@@ -68,3 +68,10 @@ ingress:
 networkPolicies:
   enabled: true
   ingressControllerNamespace: traefik
+
+# Prometheus Operator integration (needs kube-prometheus-stack installed in the cluster)
+monitoring:
+  enabled: false              # turned on per environment
+  namespace: monitoring       # where Prometheus runs (allowed through the NetworkPolicy)
+  dashboards: true            # Grafana dashboard ConfigMap, picked up by the Grafana sidecar
+  alerts: true                # PrometheusRule with app alerts

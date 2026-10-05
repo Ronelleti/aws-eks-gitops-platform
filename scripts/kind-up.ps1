@@ -46,6 +46,22 @@ kubectl create secret generic db-credentials -n tasks `
   --dry-run=client -o yaml | kubectl apply -f -; Check
 Remove-Variable pw
 
+Step "Creating the grafana-admin Secret from AWS Secrets Manager (generated on first run)"
+$grafanaSecretId = "aws-eks-gitops-platform/local/grafana-admin-password"
+$ErrorActionPreference = "Continue"
+$grafanaPw = aws secretsmanager get-secret-value --secret-id $grafanaSecretId --query SecretString --output text 2>$null
+$ErrorActionPreference = "Stop"
+if (-not $grafanaPw) {
+  Write-Host "Not found in AWS - generating a new password and storing it there"
+  $grafanaPw = aws secretsmanager get-random-password --password-length 20 --exclude-punctuation --query RandomPassword --output text; Check
+  aws secretsmanager create-secret --name $grafanaSecretId --secret-string $grafanaPw | Out-Null; Check
+}
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -; Check
+kubectl create secret generic grafana-admin -n monitoring `
+  --from-literal=admin-user=admin --from-literal=admin-password=$grafanaPw `
+  --dry-run=client -o yaml | kubectl apply -f -; Check
+Remove-Variable grafanaPw
+
 Step "Installing ArgoCD"
 helm upgrade --install argocd argo/argo-cd --namespace argocd --create-namespace --wait; Check
 
@@ -67,6 +83,8 @@ kubectl get pods -n tasks -o wide
 
 $b64 = kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}"
 $argoPw = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64))
-Write-Host "`nApp:    http://localhost:8088" -ForegroundColor Green
+Write-Host "`nApp:        http://localhost:8088" -ForegroundColor Green
+Write-Host "Grafana:    http://grafana.localhost:8088  (user: admin, password: in AWS Secrets Manager -> $grafanaSecretId)" -ForegroundColor Green
+Write-Host "Prometheus: http://prometheus.localhost:8088" -ForegroundColor Green
 Write-Host "ArgoCD: run  kubectl port-forward -n argocd svc/argocd-server 8443:443" -ForegroundColor Green
 Write-Host "        then open https://localhost:8443  (user: admin, password: $argoPw)" -ForegroundColor Green

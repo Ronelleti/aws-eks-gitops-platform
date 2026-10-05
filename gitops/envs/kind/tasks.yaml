@@ -13,3 +13,6 @@ ui:
 
 networkPolicies:
   enabled: true
+
+monitoring:
+  enabled: true

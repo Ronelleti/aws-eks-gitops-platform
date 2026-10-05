@@ -1,0 +1,46 @@
+# kube-prometheus-stack values for kind
+
+# kind doesn't expose these control-plane components for scraping; without this they
+# show as "down" and fire alerts forever
+kubeEtcd: { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }
+
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts: [prometheus.localhost]          # http://prometheus.localhost:8088
+  prometheusSpec:
+    # pick up ServiceMonitors/PrometheusRules from ALL namespaces, not only this release's
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    retention: 2d
+    resources:
+      requests: { cpu: 100m, memory: 400Mi }
+      limits: { memory: 1Gi }
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 128Mi }
+
+grafana:
+  # admin login comes from a Secret created from AWS Secrets Manager (scripts/kind-up.ps1)
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts: [grafana.localhost]             # http://grafana.localhost:8088
+  sidecar:
+    dashboards:
+      searchNamespace: ALL                 # load dashboards from ConfigMaps in any namespace
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 384Mi }
