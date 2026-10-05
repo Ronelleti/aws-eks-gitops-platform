@@ -1,4 +1,5 @@
 // Tasks API — config comes from env vars (ConfigMap + Secret in Kubernetes)
+const os = require('os');
 const express = require('express');
 const { Pool } = require('pg');
 const pino = require('pino');
@@ -63,6 +64,14 @@ app.get('/readyz', h(async (req, res) => { // readiness: DB reachable
 app.get('/metrics', h(async (req, res) => {
   res.set('Content-Type', promClient.register.contentType);
   res.end(await promClient.register.metrics());
+}));
+
+// ---- info: which pod/version served this request (visible in the UI footer) ----
+app.get('/api/info', (req, res) => res.json({
+  pod: os.hostname(),
+  version: process.env.APP_VERSION || 'dev',
+  env: process.env.APP_ENV || 'local',
+  attachments: Boolean(s3),
 }));
 
 // ---- tasks CRUD ----

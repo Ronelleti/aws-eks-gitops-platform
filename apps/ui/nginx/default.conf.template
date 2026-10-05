@@ -1,0 +1,37 @@
+# Rendered at container start: ${API_UPSTREAM} is filled from the environment.
+# JSON access logs -> stdout -> Fluent Bit -> Elasticsearch
+log_format json_combined escape=json
+  '{"time":"$time_iso8601","remote_addr":"$remote_addr","method":"$request_method",'
+  '"uri":"$request_uri","status":$status,"bytes":$body_bytes_sent,'
+  '"request_time":$request_time,"user_agent":"$http_user_agent"}';
+
+server {
+  listen 8080;
+  root /usr/share/nginx/html;
+  access_log /dev/stdout json_combined;
+
+  # probe endpoint for Kubernetes liveness/readiness
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+
+  location /api/ {
+    proxy_pass ${API_UPSTREAM};
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
+  # hashed build assets can be cached for a long time
+  location /assets/ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+  }
+
+  # single-page app: unknown paths fall back to index.html
+  location / {
+    try_files $uri /index.html;
+  }
+}

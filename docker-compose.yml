@@ -1,4 +1,5 @@
-# Local development: Postgres + API (UI will be added next)
+# Local development: Postgres + API + UI
+# Run first:  . .\scripts\local-env.ps1   (loads DB_PASSWORD from AWS Secrets Manager)
 services:
   db:
     image: postgres:16-alpine
@@ -22,11 +23,21 @@ services:
       DB_HOST: db
       DB_PASSWORD: ${DB_PASSWORD:?Run . .\scripts\local-env.ps1 first}
       LOG_LEVEL: debug
+      APP_ENV: local
     ports:
       - "3000:3000"
     depends_on:
       db:
         condition: service_healthy
+
+  ui:
+    build: ./apps/ui
+    environment:
+      API_UPSTREAM: http://api:3000
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
 
 volumes:
   db-data:
