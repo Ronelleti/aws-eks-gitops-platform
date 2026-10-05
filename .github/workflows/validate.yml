@@ -1,0 +1,43 @@
+# Checks for the parts that aren't app code: Helm chart and Terraform.
+# No AWS access needed, so it also runs safely on pull requests.
+name: validate
+
+on:
+  push:
+    branches: [main]
+    paths: ["charts/**", "gitops/**", "infra/**", ".github/workflows/validate.yml"]
+  pull_request:
+    paths: ["charts/**", "gitops/**", "infra/**", ".github/workflows/validate.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v4
+      - name: Lint the chart with every environment's values
+        run: |
+          for env in gitops/envs/*/; do
+            echo "== $env"
+            helm lint charts/tasks -f "$env/tasks.yaml"
+          done
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+      - name: Format check
+        run: terraform fmt -check -recursive infra
+      - name: Validate each root module (no backend, no AWS access)
+        run: |
+          for dir in infra/*/; do
+            [ -f "$dir/versions.tf" ] || continue
+            echo "== $dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+          done

@@ -1,0 +1,103 @@
+# Build -> push to ECR -> gate on the ECR vulnerability scan -> promote the new tag in Git.
+# ArgoCD (on EKS) then deploys whatever tag is in gitops/envs/eks-dev/tasks.yaml.
+name: app-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/**", ".github/workflows/app-ci.yml"]
+  pull_request:
+    paths: ["apps/**", ".github/workflows/app-ci.yml"]
+  workflow_dispatch: # manual "Run workflow" button
+
+# never run two pipelines for the same branch at once (they'd race on the gitops commit)
+concurrency:
+  group: app-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  AWS_ROLE_ARN: arn:aws:iam::508193318669:role/aws-eks-gitops-platform-github-ci
+  ECR_REGISTRY: 508193318669.dkr.ecr.eu-north-1.amazonaws.com
+  # only pushes to main publish images; pull requests just build
+  PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+
+jobs:
+  build:
+    name: build ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # lets the job request a GitHub OIDC token for AWS
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, ui]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to AWS (OIDC, no stored keys)
+        if: env.PUBLISH == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        if: env.PUBLISH == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (and push on main)
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/${{ matrix.app }}
+          push: ${{ env.PUBLISH == 'true' }}
+          # tag = full commit SHA: unique per build, and ECR tags are immutable
+          tags: ${{ env.ECR_REGISTRY }}/tasks-${{ matrix.app }}:${{ github.sha }}
+          build-args: APP_VERSION=${{ github.sha }}
+          # layer cache stored in GitHub Actions: unchanged layers aren't rebuilt
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+      - name: Security gate - fail on CRITICAL vulnerabilities (ECR scan on push)
+        if: env.PUBLISH == 'true'
+        env:
+          REPO: tasks-${{ matrix.app }}
+          TAG: ${{ github.sha }}
+        run: |
+          aws ecr wait image-scan-complete --repository-name "$REPO" --image-id imageTag="$TAG"
+          aws ecr describe-image-scan-findings --repository-name "$REPO" --image-id imageTag="$TAG" \
+            --query 'imageScanFindings.findingSeverityCounts' --output table || true
+          critical=$(aws ecr describe-image-scan-findings --repository-name "$REPO" --image-id imageTag="$TAG" \
+            --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text)
+          if [ "$critical" != "None" ] && [ "$critical" -gt 0 ]; then
+            echo "::error::$REPO:$TAG has $critical CRITICAL vulnerabilities - not promoting it"
+            exit 1
+          fi
+          echo "No CRITICAL vulnerabilities in $REPO:$TAG"
+
+  promote:
+    name: promote to eks-dev (GitOps)
+    needs: build # runs only if BOTH images built and passed the scan
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the new tag
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set the new image tags in gitops/envs/eks-dev/tasks.yaml
+        run: |
+          yq -i ".api.image.tag = \"$GITHUB_SHA\" | .ui.image.tag = \"$GITHUB_SHA\"" gitops/envs/eks-dev/tasks.yaml
+          git diff
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gitops/envs/eks-dev/tasks.yaml
+          git commit -m "deploy(eks-dev): tasks ${GITHUB_SHA::7}" || { echo "Nothing to change"; exit 0; }
+          git pull --rebase origin main
+          git push origin HEAD:main
