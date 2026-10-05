@@ -22,8 +22,57 @@ env:
   PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
 
 jobs:
+  # Tests run first. If either fails, nothing is built or pushed.
+  test-api:
+    name: test api
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres: # a real database, the same major version as RDS
+        image: postgres:16
+        env:
+          POSTGRES_USER: tasks
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: tasks
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tasks" --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  test-ui:
+    name: test ui
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/ui
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/ui/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
   build:
     name: build ${{ matrix.app }}
+    needs: [test-api, test-ui]
     runs-on: ubuntu-latest
     permissions:
       contents: read

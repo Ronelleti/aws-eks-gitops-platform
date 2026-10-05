@@ -1,12 +1,13 @@
 {
   "name": "tasks-api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tasks API for aws-eks-gitops-platform",
   "main": "src/index.js",
   "private": true,
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\""
   },
   "engines": {
     "node": ">=22"

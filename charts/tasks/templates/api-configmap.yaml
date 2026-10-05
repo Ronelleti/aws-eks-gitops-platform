@@ -14,3 +14,5 @@ data:
   APP_ENV: {{ .Values.appEnv | quote }}
   S3_BUCKET: {{ .Values.api.s3Bucket | quote }}
   AWS_REGION: {{ .Values.awsRegion | quote }}
+  ENABLE_DEMO: {{ .Values.api.enableDemo | quote }}
+  MAX_UPLOAD_BYTES: {{ mul .Values.api.maxUploadMb 1048576 | quote }}

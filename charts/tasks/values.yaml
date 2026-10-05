@@ -10,6 +10,8 @@ api:
     pullPolicy: IfNotPresent
   replicas: 2                # ignored when autoscaling is enabled (the HPA owns the count)
   logLevel: info
+  enableDemo: true           # POST /api/demo/seed (the "Load sample data" button). Turn off in production
+  maxUploadMb: 10            # largest attachment the UI will accept
   s3Bucket: ""               # empty = attachments disabled
   serviceAccount:
     annotations: {}          # on EKS: eks.amazonaws.com/role-arn for IRSA

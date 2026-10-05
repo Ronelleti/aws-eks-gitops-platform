@@ -11,8 +11,15 @@ resource "aws_iam_role" "api" {
 data "aws_iam_policy_document" "api_s3" {
   statement {
     sid       = "Attachments"
-    actions   = ["s3:PutObject", "s3:GetObject"]
+    actions   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
     resources = ["${aws_s3_bucket.attachments.arn}/*"]
+  }
+
+  # lets the System page check that the bucket answers (HeadBucket needs this on the bucket itself)
+  statement {
+    sid       = "BucketStatus"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.attachments.arn]
   }
 }
 

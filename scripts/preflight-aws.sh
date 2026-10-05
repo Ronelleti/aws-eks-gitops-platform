@@ -25,6 +25,22 @@ check() {
   fi
 }
 
+# roundtrip "<label>" "<create command>" "<delete command>": creates something free, then removes it again
+roundtrip() {
+  local label="$1" create="$2" delete="$3" out rc
+  out=$(eval "$create" 2>&1); rc=$?
+  if [[ $rc -eq 0 ]]; then
+    printf "  ALLOWED        %s\n" "$label"
+    eval "$delete" >/dev/null 2>&1
+  elif [[ "$out" == *"explicit deny"* ]]; then
+    printf "  BLOCKED (SCP)  %s\n" "$label"; blocked=1
+  elif [[ "$out" == *AccessDenied* || "$out" == *UnauthorizedOperation* || "$out" == *"not authorized"* ]]; then
+    printf "  BLOCKED        %s\n" "$label"; blocked=1
+  else
+    printf "  INCONCLUSIVE   %s -> %s\n" "$label" "$(echo "$out" | tr '\n' ' ' | cut -c1-170)"
+  fi
+}
+
 echo "Account / identity (region: $AWS_DEFAULT_REGION)"
 aws sts get-caller-identity --query '[Account,Arn]' --output text || { echo "AWS login failed"; exit 1; }
 
@@ -68,6 +84,27 @@ check "EKS"             aws eks list-clusters
 check "RDS (postgres)"  aws rds describe-orderable-db-instance-options --engine postgres --db-instance-class db.t4g.micro --max-items 1
 check "Secrets Manager" aws secretsmanager list-secrets --max-results 1
 check "Load balancers"  aws elbv2 describe-load-balancers --page-size 1
+
+echo; echo "More AWS services we could add (free probes only)"
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+roundtrip "SQS queue (event-driven work, dead-letter queues)" \
+  "aws sqs create-queue --queue-name preflight-probe --query QueueUrl --output text" \
+  "aws sqs delete-queue --queue-url \$(aws sqs get-queue-url --queue-name preflight-probe --query QueueUrl --output text)"
+roundtrip "SNS topic (email and alert notifications)" \
+  "aws sns create-topic --name preflight-probe --query TopicArn --output text" \
+  "aws sns delete-topic --topic-arn arn:aws:sns:$AWS_DEFAULT_REGION:$ACCOUNT:preflight-probe"
+roundtrip "CloudWatch alarm" \
+  "aws cloudwatch put-metric-alarm --alarm-name preflight-probe --namespace Preflight --metric-name Probe --statistic Sum --period 60 --evaluation-periods 1 --threshold 1 --comparison-operator GreaterThanThreshold" \
+  "aws cloudwatch delete-alarms --alarm-names preflight-probe"
+check "EventBridge rules (schedules, event routing)"        aws events list-rules --max-items 1
+check "AWS Budgets (cost alerts as code)"                   aws budgets describe-budgets --account-id "$ACCOUNT" --max-items 1
+check "Lambda functions"                                    aws lambda list-functions --max-items 1
+check "AWS Backup vaults"                                   aws backup list-backup-vaults --max-results 1
+check "GuardDuty (threat detection)"                        aws guardduty list-detectors
+check "WAFv2 web ACLs (firewall in front of the ALB)"       aws wafv2 list-web-acls --scope REGIONAL
+check "ACM certificates"                                    aws acm list-certificates --max-items 1
+check "KMS keys (customer-managed encryption)"              aws kms list-keys --limit 1
+check "CloudFront (HTTPS with no domain; a global service)" aws cloudfront list-distributions --max-items 1
 
 echo; echo "Kubernetes versions EKS offers with standard support:"
 aws eks describe-cluster-versions --query "clusterVersions[?status=='STANDARD_SUPPORT'].clusterVersion" --output text 2>/dev/null \
