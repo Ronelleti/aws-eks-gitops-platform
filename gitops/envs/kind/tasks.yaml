@@ -7,5 +7,6 @@ api:
     tag: "0.1.1"
 
 ui:
+  replicas: 3
   image:
     tag: "0.1.0"
