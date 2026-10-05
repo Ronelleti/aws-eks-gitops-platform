@@ -1,17 +1,14 @@
 # EKS dev environment. More values (RDS host, IRSA role, ALB ingress) are added with infra/dev.
 # The image tags below are updated automatically by the app-ci workflow - don't edit them by hand.
 appEnv: eks-dev
-
 api:
   image:
     repository: 508193318669.dkr.ecr.eu-north-1.amazonaws.com/tasks-api
-    tag: "initial"
-
+    tag: "5c66a1ccc8f4bfb67ce3f901109f003ccad99216"
 ui:
   image:
     repository: 508193318669.dkr.ecr.eu-north-1.amazonaws.com/tasks-ui
-    tag: "initial"
-
+    tag: "5c66a1ccc8f4bfb67ce3f901109f003ccad99216"
 # the database is RDS in AWS, not a pod
 postgres:
   enabled: false
