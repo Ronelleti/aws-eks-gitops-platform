@@ -1,0 +1,52 @@
+# This lab runs ONE Elasticsearch node, which can hold only one copy of each shard. Elasticsearch's own internal
+# indices ask for a second (replica) copy anyway, so the cluster reports "yellow" forever. Nothing is wrong or lost,
+# but yellow warnings hide real problems.
+# Every 5 minutes this finds indices whose replica cannot be placed and sets their replicas to 0.
+# Safe to repeat: when nothing is unassigned it does nothing. (With two or more nodes, delete this file.)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: single-node-replicas
+  namespace: logging
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+          containers:
+            - name: replicas
+              image: curlimages/curl:8.11.1
+              env:
+                - name: ELASTIC_PASSWORD
+                  valueFrom:
+                    secretKeyRef: { name: logging-es-elastic-user, key: elastic }
+              resources:
+                requests: { cpu: 10m, memory: 16Mi }
+                limits: { memory: 32Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: { drop: ["ALL"] }
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -u
+                  ES=https://logging-es-http.logging.svc:9200
+                  AUTH="elastic:${ELASTIC_PASSWORD}"
+                  # lines look like:  <index> r UNASSIGNED   (r = replica copy)
+                  list=$(curl -sk -u "$AUTH" "$ES/_cat/shards?h=index,prirep,state" | awk '$2=="r" && $3=="UNASSIGNED" {print $1}' | sort -u)
+                  if [ -z "$list" ]; then echo "no unassigned replicas"; exit 0; fi
+                  for idx in $list; do
+                    echo "setting replicas to 0 on $idx"
+                    curl -sk -u "$AUTH" -X PUT "$ES/$idx/_settings" -H 'Content-Type: application/json' -d '{"index":{"number_of_replicas":0}}'
+                    echo
+                  done
