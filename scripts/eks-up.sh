@@ -24,7 +24,7 @@ if grep -q 'tag: "initial"' gitops/envs/eks-dev/tasks.yaml; then
 fi
 grep 'tag:' gitops/envs/eks-dev/tasks.yaml
 
-step "terraform apply (the cost clock starts when the EKS cluster appears: about \$0.35 per hour)"
+step "terraform apply (the cost clock starts when the EKS cluster appears: about \$0.45 per hour)"
 "${TF[@]}" init -input=false
 "${TF[@]}" apply "$@"
 
@@ -49,7 +49,7 @@ if [[ -n "$host" ]]; then
 else
   echo "No ALB address yet. Check:  kubectl get applications -n argocd   and   kubectl describe ingress tasks -n tasks"
 fi
-echo "ArgoCD: kubectl port-forward -n argocd svc/argocd-server 8443:443   then https://localhost:8443 (user: admin)"
-echo "        password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+echo "Monitoring, logging and ArgoCD take a few more minutes to settle. When they have:"
+echo "  bash scripts/eks-open.sh     (opens ArgoCD, Grafana, Prometheus and Kibana on your computer, and prints the logins)"
 echo
 echo "When you are done:  bash scripts/eks-down.sh      (do NOT just run terraform destroy)"

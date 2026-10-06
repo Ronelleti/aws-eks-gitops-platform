@@ -1,0 +1,22 @@
+# Kibana, connected to the Elasticsearch above by name. Reached with kubectl port-forward (scripts/eks-open.sh):
+# there is no HTTPS in front of this environment, so Kibana is deliberately not published on the internet.
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: logging
+  namespace: logging
+spec:
+  version: 9.4.3
+  count: 1
+  elasticsearchRef:
+    name: logging
+  podTemplate:
+    spec:
+      containers:
+        - name: kibana
+          env:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=768"
+          resources:
+            requests: { cpu: 200m, memory: 1Gi }
+            limits: { memory: 1Gi }

@@ -36,7 +36,7 @@ resource "aws_eks_pod_identity_association" "api" {
   role_arn        = aws_iam_role.api.arn
 }
 
-# -- External Secrets: read ONLY the database secret that RDS created --
+# -- External Secrets: read ONLY the two secrets this environment uses (the RDS password and the Grafana login) --
 resource "aws_iam_role" "external_secrets" {
   name               = "${local.name}-external-secrets"
   assume_role_policy = data.aws_iam_policy_document.pod_identity_trust.json
@@ -44,14 +44,17 @@ resource "aws_iam_role" "external_secrets" {
 
 data "aws_iam_policy_document" "external_secrets" {
   statement {
-    sid       = "ReadDatabaseSecret"
-    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-    resources = [aws_db_instance.this.master_user_secret[0].secret_arn]
+    sid     = "ReadSecrets"
+    actions = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    resources = [
+      aws_db_instance.this.master_user_secret[0].secret_arn,
+      aws_secretsmanager_secret.grafana_admin.arn,
+    ]
   }
 }
 
 resource "aws_iam_role_policy" "external_secrets" {
-  name   = "read-database-secret"
+  name   = "read-secrets"
   role   = aws_iam_role.external_secrets.id
   policy = data.aws_iam_policy_document.external_secrets.json
 }

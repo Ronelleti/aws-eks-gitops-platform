@@ -1,0 +1,35 @@
+# Fluent Bit: one pod per node reads every container's logs and ships them to Elasticsearch.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluent-bit
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"   # lower numbers are applied first; retries cover anything that still arrives too early
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://fluent.github.io/helm-charts
+      chart: fluent-bit
+      targetRevision: "0.58.3"
+      helm:
+        releaseName: fluent-bit
+        valueFiles:
+          - $values/gitops/envs/eks-dev/fluent-bit.yaml
+    - repoURL: https://github.com/Ronelleti/aws-eks-gitops-platform.git
+      targetRevision: main
+      ref: values               # lets the chart read its values file from this repository
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 10
+      backoff: { duration: 15s, factor: 2, maxDuration: 3m }

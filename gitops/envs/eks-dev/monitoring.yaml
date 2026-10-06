@@ -1,0 +1,56 @@
+# kube-prometheus-stack for the EKS dev cluster. Reached with kubectl port-forward (scripts/eks-open.sh),
+# never from the internet: this environment has no HTTPS, and Grafana has a login.
+
+# EKS runs the control plane for you and does not expose these components, so scraping them would only produce
+# "target down" noise, and their default alerts ("scheduler is down") would fire forever.
+kubeEtcd: { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false
+
+prometheus:
+  prometheusSpec:
+    # pick up ServiceMonitors and PrometheusRules from ALL namespaces (the tasks chart ships its own)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    retention: 1d              # the environment lives for hours, not weeks
+    retentionSize: 4GB         # stop before the 10Gi disk fills
+    resources:
+      requests: { cpu: 100m, memory: 512Mi }
+      limits: { memory: 1536Mi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 10Gi
+
+# Alerts are visible in Prometheus and Grafana. Sending them anywhere (email through SNS) is a later step.
+alertmanager:
+  enabled: false
+
+grafana:
+  # the login comes from AWS Secrets Manager through External Secrets (gitops/platform/eks-dev/secrets)
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  grafana.ini:
+    plugins:
+      preinstall_disabled: true   # do not download plugins from the internet at startup; Prometheus is built in
+  sidecar:
+    dashboards:
+      searchNamespace: ALL        # load dashboards from ConfigMaps in any namespace (the tasks chart ships one)
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 512Mi }

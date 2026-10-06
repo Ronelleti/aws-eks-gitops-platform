@@ -15,3 +15,7 @@ ingress:
 
 networkPolicies:
   ingressControllerNamespace: ""   # no in-cluster controller: the ALB is outside the cluster
+
+# the app's own metrics, alerts and Grafana dashboard (needs the monitoring application from gitops/apps/eks-dev)
+monitoring:
+  enabled: true

@@ -1,0 +1,12 @@
+# gp3 is cheaper and faster than the gp2 that EKS creates by default.
+# WaitForFirstConsumer creates the disk in the same availability zone as the pod that uses it.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete        # the disk is deleted with its claim, so nothing is left billing after teardown
+parameters:
+  type: gp3

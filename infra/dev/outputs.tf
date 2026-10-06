@@ -45,3 +45,8 @@ output "app_url_command" {
   description = "The ALB takes 2-3 minutes to appear after the first sync"
   value       = "kubectl get ingress tasks -n tasks -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
 }
+
+output "grafana_secret_name" {
+  description = "Where the Grafana admin login lives in Secrets Manager"
+  value       = aws_secretsmanager_secret.grafana_admin.name
+}

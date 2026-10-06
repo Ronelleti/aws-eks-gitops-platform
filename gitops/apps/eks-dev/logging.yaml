@@ -1,0 +1,28 @@
+# Elasticsearch and Kibana (run by the ECK operator), plus a one-time setup job.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: logging
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"   # lower numbers are applied first; retries cover anything that still arrives too early
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Ronelleti/aws-eks-gitops-platform.git
+    targetRevision: main
+    path: gitops/platform/eks-dev/logging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 10
+      backoff: { duration: 15s, factor: 2, maxDuration: 3m }

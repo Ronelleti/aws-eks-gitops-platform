@@ -88,8 +88,8 @@ check "Load balancers"  aws elbv2 describe-load-balancers --page-size 1
 echo; echo "More AWS services we could add (free probes only)"
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 roundtrip "SQS queue (event-driven work, dead-letter queues)" \
-  "aws sqs create-queue --queue-name preflight-probe --query QueueUrl --output text" \
-  "aws sqs delete-queue --queue-url \$(aws sqs get-queue-url --queue-name preflight-probe --query QueueUrl --output text)"
+  "aws sqs create-queue --queue-name preflight-probe-$$ --query QueueUrl --output text" \
+  "aws sqs delete-queue --queue-url \$(aws sqs get-queue-url --queue-name preflight-probe-$$ --query QueueUrl --output text)"
 roundtrip "SNS topic (email and alert notifications)" \
   "aws sns create-topic --name preflight-probe --query TopicArn --output text" \
   "aws sns delete-topic --topic-arn arn:aws:sns:$AWS_DEFAULT_REGION:$ACCOUNT:preflight-probe"

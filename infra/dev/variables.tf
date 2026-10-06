@@ -49,8 +49,9 @@ variable "node_capacity_type" {
 }
 
 variable "node_desired_size" {
-  type    = number
-  default = 2
+  description = "Worker nodes. 3 gives room for the app, ArgoCD, Prometheus, Grafana, Elasticsearch and Kibana"
+  type        = number
+  default     = 3
 }
 
 variable "node_min_size" {
@@ -60,7 +61,7 @@ variable "node_min_size" {
 
 variable "node_max_size" {
   type    = number
-  default = 3
+  default = 4
 }
 
 variable "node_disk_size_gb" {

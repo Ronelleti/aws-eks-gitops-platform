@@ -65,8 +65,11 @@ resource "helm_release" "tasks_app" {
           namespace = "tasks"
         }
         syncPolicy = {
-          automated   = { prune = true, selfHeal = true }
-          syncOptions = ["CreateNamespace=true"]
+          automated = { prune = true, selfHeal = true }
+          syncOptions = [
+            "CreateNamespace=true",
+            "SkipDryRunOnMissingResource=true", # the ServiceMonitor type exists only once monitoring has installed its CRDs
+          ]
           retry = {
             limit   = 10
             backoff = { duration = "15s", factor = 2, maxDuration = "3m" }
@@ -81,5 +84,49 @@ resource "helm_release" "tasks_app" {
     helm_release.db_secret,
     helm_release.metrics_server,
     aws_eks_pod_identity_association.api,
+  ]
+}
+
+# The platform: everything that is not the app itself (storage class, monitoring, logging, secrets for them).
+# One Application that points at a folder of Applications in Git (the "app of apps" pattern), so adding a
+# platform component is a commit, not a Terraform change.
+resource "helm_release" "platform_apps" {
+  name       = "platform-apps"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argocd-apps"
+  version    = local.chart_versions.argocd_apps
+  namespace  = "argocd"
+
+  values = [yamlencode({
+    applications = {
+      platform = {
+        namespace  = "argocd"
+        project    = "default"
+        finalizers = ["resources-finalizer.argocd.argoproj.io"]
+        source = {
+          repoURL        = var.gitops_repo_url
+          targetRevision = var.gitops_revision
+          path           = "gitops/apps/eks-dev"
+        }
+        destination = {
+          server    = "https://kubernetes.default.svc"
+          namespace = "argocd"
+        }
+        syncPolicy = {
+          automated = { prune = true, selfHeal = true }
+          retry = {
+            limit   = 10
+            backoff = { duration = "15s", factor = 2, maxDuration = "3m" }
+          }
+        }
+      }
+    }
+  })]
+
+  # the Grafana secret must exist in AWS before External Secrets is asked to copy it
+  depends_on = [
+    helm_release.argocd,
+    helm_release.db_secret, # creates the ClusterSecretStore that the platform's ExternalSecrets use
+    aws_secretsmanager_secret_version.grafana_admin,
   ]
 }

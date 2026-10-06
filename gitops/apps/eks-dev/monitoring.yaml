@@ -1,0 +1,36 @@
+# Prometheus, Grafana, kube-state-metrics and node-exporter. Values live in gitops/envs/eks-dev/monitoring.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"   # lower numbers are applied first; retries cover anything that still arrives too early
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: "91.9.0"
+      helm:
+        releaseName: monitoring
+        valueFiles:
+          - $values/gitops/envs/eks-dev/monitoring.yaml
+    - repoURL: https://github.com/Ronelleti/aws-eks-gitops-platform.git
+      targetRevision: main
+      ref: values               # lets the chart read its values file from this repository
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # the Prometheus CRDs are too large for client-side apply
+    retry:
+      limit: 10
+      backoff: { duration: 15s, factor: 2, maxDuration: 3m }

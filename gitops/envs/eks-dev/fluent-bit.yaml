@@ -1,0 +1,84 @@
+# Fluent Bit: one pod per node reads /var/log/containers/*.log and ships it to Elasticsearch.
+# The pods' JSON logs (the API writes one JSON object per line) are parsed into fields, so Kibana can filter
+# on kubernetes.namespace_name, pod, level, req.url and so on.
+
+kind: DaemonSet
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }
+
+# the "elastic" password that the ECK operator generated, and the CA that signed Elasticsearch's certificate
+env:
+  - name: ELASTIC_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: logging-es-elastic-user
+        key: elastic
+# The first log line creates that day's index. It must not arrive before the index template does
+# (gitops/platform/eks-dev/logging/setup-job.yaml), or that index would keep the wrong settings.
+initContainers:
+  - name: wait-for-index-template
+    image: curlimages/curl:8.11.1
+    env:
+      - name: ELASTIC_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: logging-es-elastic-user
+            key: elastic
+    command: ["sh", "-c"]
+    args:
+      - |
+        until curl -sk -u "elastic:${ELASTIC_PASSWORD}" https://logging-es-http.logging.svc:9200/_index_template/kube-logs | grep -q kube-logs; do
+          echo "waiting for the index template"; sleep 5
+        done
+    resources:
+      requests: { cpu: 10m, memory: 16Mi }
+      limits: { memory: 32Mi }
+extraVolumes:
+  - name: es-ca
+    secret:
+      secretName: logging-es-http-certs-public
+extraVolumeMounts:
+  - name: es-ca
+    mountPath: /es-ca
+    readOnly: true
+
+config:
+  inputs: |
+    [INPUT]
+        Name tail
+        Path /var/log/containers/*.log
+        Exclude_Path /var/log/containers/*fluent-bit*.log
+        multiline.parser docker, cri
+        Tag kube.*
+        Mem_Buf_Limit 8MB
+        Skip_Long_Lines On
+
+  filters: |
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Merge_Log On
+        Merge_Log_Key json          # parsed JSON lands under json.* (json.msg, json.level, json.req.url) so it cannot clash with Kubernetes fields
+        Keep_Log Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+
+  outputs: |
+    [OUTPUT]
+        Name es
+        Match kube.*
+        Host logging-es-http.logging.svc
+        Port 9200
+        HTTP_User elastic
+        HTTP_Passwd ${ELASTIC_PASSWORD}
+        tls On
+        tls.verify On
+        tls.ca_file /es-ca/ca.crt
+        Logstash_Format On
+        Logstash_Prefix kube
+        Suppress_Type_Name On
+        Replace_Dots On
+        Retry_Limit False
+        Trace_Error On

@@ -1,0 +1,33 @@
+# One Elasticsearch node. The ECK operator creates the pod, the TLS certificates and the "elastic" user's
+# password (in the Secret logging-es-elastic-user).
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: logging
+  namespace: logging
+spec:
+  version: 9.4.3
+  nodeSets:
+    - name: default
+      count: 1
+      config:
+        node.store.allow_mmap: false   # lets Elasticsearch start without raising vm.max_map_count on the node
+      podTemplate:
+        spec:
+          containers:
+            - name: elasticsearch
+              env:
+                - name: ES_JAVA_OPTS
+                  value: "-Xms1g -Xmx1g"   # half of the memory limit; the rest is for the operating system's file cache
+              resources:
+                requests: { cpu: 500m, memory: 2Gi }
+                limits: { memory: 2Gi }
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data   # this exact name is required by ECK
+          spec:
+            accessModes: [ReadWriteOnce]
+            storageClassName: gp3
+            resources:
+              requests:
+                storage: 20Gi
