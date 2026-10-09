@@ -1,11 +1,11 @@
 # ---- deps: install production dependencies only ----
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 # ---- runtime: small image, non-root user ----
-FROM node:22-alpine
+FROM node:25-alpine
 ARG APP_VERSION=dev
 ENV NODE_ENV=production \
     APP_VERSION=$APP_VERSION
