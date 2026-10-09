@@ -6,11 +6,11 @@ api:
     enabled: true # canary releases with automatic rollback (Argo Rollouts, see gitops/apps/eks-dev/rollouts.yaml)
   image:
     repository: 508193318669.dkr.ecr.eu-north-1.amazonaws.com/tasks-api
-    tag: "d0e312efa24bd2527a6ddb8aabef8a8fa3176b45"
+    tag: "a0be6528a0451624a560b7ae22e9ec17a5cf2c76"
 ui:
   image:
     repository: 508193318669.dkr.ecr.eu-north-1.amazonaws.com/tasks-ui
-    tag: "d0e312efa24bd2527a6ddb8aabef8a8fa3176b45"
+    tag: "a0be6528a0451624a560b7ae22e9ec17a5cf2c76"
 # the database is RDS in AWS, not a pod
 postgres:
   enabled: false
