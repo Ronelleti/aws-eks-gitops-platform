@@ -9,6 +9,9 @@ metadata:
 spec:
   selector:
     matchLabels: { app: api }
+  # adds the label rollouts_pod_template_hash to every metric: it tells old pods from canary pods
+  podTargetLabels:
+    - rollouts-pod-template-hash
   endpoints:
     - port: http
       path: /metrics

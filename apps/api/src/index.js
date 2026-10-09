@@ -12,6 +12,7 @@ const tasks = require('./routes/tasks');
 const attachments = require('./routes/attachments');
 const insights = require('./routes/insights');
 const demo = require('./routes/demo');
+const { faultInjector } = require('./fault');
 
 let schemaReady = false; // set once migrations have run
 
@@ -60,6 +61,8 @@ app.get('/metrics', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Demo-only failure injection (does nothing unless FAULT_ERROR_RATE is above 0).
+app.use('/api', faultInjector(config.faultErrorRate));
 app.use('/api/tasks', tasks);
 app.use('/api', attachments);
 app.use('/api', insights);

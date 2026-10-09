@@ -29,6 +29,10 @@ module.exports = {
   maxUploadBytes: num(process.env.MAX_UPLOAD_BYTES, 10 * 1024 * 1024),
   enableDemo: process.env.ENABLE_DEMO !== 'false', // POST /api/demo/seed
 
+  // Demo only: answer this share of /api requests (0 to 1) with HTTP 500. It exists to show a canary
+  // rollout being stopped and rolled back automatically. Leave it at 0 in normal use.
+  faultErrorRate: Math.min(1, Math.max(0, num(process.env.FAULT_ERROR_RATE, 0) || 0)),
+
   // Who is answering. The UI shows this, and every log line carries it.
   instance: {
     pod: process.env.HOSTNAME || os.hostname(),

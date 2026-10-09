@@ -1,0 +1,72 @@
+{{- if .Values.api.rollout.enabled }}
+# Canary release of the API (needs Argo Rollouts installed in the cluster).
+#
+# A new version starts on one pod next to the old ones. While it runs, Prometheus is asked how many of
+# the NEW pods' requests fail. If more than api.rollout.maxErrorRate do, the rollout stops and goes back
+# to the old version by itself. Otherwise it steps up, and finally replaces every old pod.
+#
+# The Service selects every pod labelled app=api, so each pod gets its share of the requests. The canary's
+# share therefore follows the pod count (with 2 pods, one canary pod is about half of the traffic).
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: api
+  labels:
+    app: api
+    {{- include "tasks.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels: { app: api }
+  template:
+    {{- include "tasks.apiPodTemplate" . | nindent 4 }}
+  strategy:
+    canary:
+      maxSurge: 1
+      maxUnavailable: 0
+      # runs in the background from step 1 (the first pause) until the rollout ends
+      analysis:
+        startingStep: 1
+        templates:
+          - templateName: api-error-rate
+        args:
+          - name: canary-hash
+            valueFrom:
+              podTemplateHashValue: Latest
+      steps:
+        - setWeight: 25
+        - pause: { duration: {{ .Values.api.rollout.pauseSeconds }}s }
+        - setWeight: 50
+        - pause: { duration: {{ .Values.api.rollout.pauseSeconds }}s }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: api-error-rate
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
+spec:
+  args:
+    - name: canary-hash
+  metrics:
+    - name: error-rate
+      interval: 15s
+      initialDelay: 30s          # wait until Prometheus has scraped the new pods
+      failureLimit: 2            # the 3rd bad measurement fails the analysis
+      failureCondition: result[0] > {{ .Values.api.rollout.maxErrorRate }}
+      provider:
+        prometheus:
+          address: {{ .Values.api.rollout.prometheusAddress }}
+          # Share of the NEW pods' API requests that ended in a 5xx, over the last minute.
+          # rollouts_pod_template_hash comes from podTargetLabels in the ServiceMonitor.
+          # "or vector(0)" makes "no requests yet" count as 0% errors instead of an error.
+          query: |
+            (
+              (sum(rate(http_request_duration_seconds_count{namespace="{{ .Release.Namespace }}", rollouts_pod_template_hash="{{ "{{args.canary-hash}}" }}", route!~"/healthz|/readyz|/metrics", status=~"5.."}[1m])) or vector(0))
+              /
+              sum(rate(http_request_duration_seconds_count{namespace="{{ .Release.Namespace }}", rollouts_pod_template_hash="{{ "{{args.canary-hash}}" }}", route!~"/healthz|/readyz|/metrics"}[1m]))
+            ) or vector(0)
+{{- end }}

@@ -304,6 +304,60 @@ Then open https://localhost:8443 (user `admin`) and accept the certificate warni
 | Autoscaling | `kubectl get hpa -n tasks` | A real percentage (not `<unknown>`) after a minute or two |
 | Policies enforced | `kubectl run netcheck -n tasks --rm -it --image=public.ecr.aws/docker/library/busybox:1.36 --restart=Never -- wget -qO- -T 3 http://api:3000/healthz` | **Times out**: only the UI may reach the API |
 
+### Canary releases and load testing
+
+The API is released as a **canary** (Argo Rollouts, installed by `gitops/apps/eks-dev/rollouts.yaml`). When the API's
+pod definition changes (a new image, a new setting), the new version first runs on one pod next to the old ones.
+While it runs, Prometheus is asked what share of the **new pods'** requests fail. More than 5% for about a minute
+and the rollout stops and goes back to the old version by itself. Otherwise it steps up (25%, then 50%), and
+finally replaces every old pod. Each step waits 2 minutes (`api.rollout.pauseSeconds`).
+
+```bash
+kubectl get pods -n argo-rollouts          # the controller is Running
+kubectl get rollout api -n tasks           # Healthy, with the current pod counts
+```
+
+**A canary can only be judged on real traffic.** With no requests, the new pods' error rate looks perfect. So run
+the load test (k6 in Docker, nothing to install) in a second terminal during every rollout:
+
+```bash
+bash scripts/load-test.sh                  # finds the app's address itself; 10 users, 2 minutes at full load
+bash scripts/load-test.sh "" 6m 20         # 20 users for 6 minutes
+bash scripts/load-test.sh http://localhost:8080    # the local docker compose app
+```
+
+It fails (exit code 99) when more than 1% of requests fail or the slowest 5% take over 800 ms. Write down the
+numbers of the first healthy run: they are your baseline.
+
+**Demo 1: a good release.** Terminal 1: `bash scripts/load-test.sh "" 6m`. Terminal 2:
+`kubectl get rollout api -n tasks -w`. Then change something harmless (for example add `logLevel: debug` under
+`api:` in `gitops/envs/eks-dev/tasks.yaml`), commit and push. ArgoCD picks it up within about 3 minutes. Watch the
+rollout go through its steps to `Healthy`.
+
+**Demo 2: a bad release is stopped.** Same two terminals. Add `faultErrorRate: 0.5` under `api:` in
+`gitops/envs/eks-dev/tasks.yaml` (a demo switch: half of the new version's API requests fail), commit and push.
+Within a minute or two of the canary pod starting, the analysis fails and the rollout goes back by itself:
+
+```bash
+kubectl get analysisrun -n tasks           # the newest one shows Failed
+kubectl describe rollout api -n tasks      # Status: Degraded, the message names the failed analysis
+kubectl get pods -n tasks -l app=api       # the old pods kept serving the whole time
+```
+
+Then **revert the commit** (`git revert HEAD`, push): the Git file asks for the old version again, and the rollout
+becomes `Healthy`. Until you revert, ArgoCD shows the app as Degraded: it still wants the bad version, and the
+rollout correctly refuses to promote it.
+
+**Know the limits:**
+
+- **The traffic split follows the pod count.** The Service sends each request to any pod labelled `app=api`, so with
+  2 pods, one canary pod gets about half of the requests. Exact percentages need a traffic router in front (an
+  ingress controller or a service mesh), which this build does not have.
+- **Users see the bad version for a short time.** In demo 2, about half of the requests the canary pod receives fail
+  until the analysis catches it. k6 shows this as failed requests. That is the price of testing on real traffic.
+- **Only the error rate is judged**, not latency or business metrics. Add more metrics to
+  `charts/tasks/templates/api-rollout.yaml` as needed.
+
 ### Destroy
 
 ```bash
@@ -485,7 +539,7 @@ cents for ECR and S3).
 - **Sending alerts anywhere.** Alerts are visible in Prometheus and Grafana, but Alertmanager is off. Email through SNS and
   CloudWatch alarms for the AWS side (EKS, RDS, ALB) are the next step.
 - **HTTPS and a custom domain** (ACM certificate and Route 53).
-- An **ops VM** configured with Ansible for load tests.
+- An **ops VM** configured with Ansible (the load test already runs from your computer with k6).
 
 ---
 
@@ -523,7 +577,7 @@ cents for ECR and S3).
 ├── gitops/
 │   ├── bootstrap/            ArgoCD root application for kind
 │   ├── apps/kind/            ArgoCD applications for kind (app, monitoring)
-│   ├── apps/eks-dev/         ArgoCD applications for the AWS platform (monitoring, logging, storage, secrets)
+│   ├── apps/eks-dev/         ArgoCD applications for the AWS platform (monitoring, logging, storage, secrets, Argo Rollouts)
 │   ├── platform/eks-dev/     Plain manifests those applications deploy (StorageClass, Elasticsearch, Kibana, ...)
 │   └── envs/
 │       ├── kind/             Values for the local cluster
@@ -533,10 +587,12 @@ cents for ECR and S3).
 │   ├── dev/                  Ephemeral layer: VPC, EKS, RDS, S3, IAM, Helm releases
 │   └── modules/vpc/          Hand-written VPC module
 ├── k8s/kind-config.yaml      Local kind cluster definition
+├── tests/load/api.js         k6 load test: browse, insights, create/move/delete a task
 ├── scripts/
 │   ├── eks-up.sh             Build the AWS environment
 │   ├── eks-open.sh           Open ArgoCD, Grafana, Prometheus and Kibana locally and print the logins
 │   ├── eks-down.sh           Tear it down safely, then check for leftovers
+│   ├── load-test.sh          k6 load test (runs in Docker); use it while a canary rollout is in progress
 │   ├── preflight-aws.sh      Free checks of what the AWS account allows
 │   ├── kind-up.ps1           Local cluster (PowerShell)
 │   ├── kind-down.ps1

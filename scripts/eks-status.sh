@@ -13,6 +13,10 @@ echo "== Argo CD applications"
 kubectl get applications.argoproj.io -n argocd
 
 echo
+echo "== API canary rollout"
+kubectl get rollout -n tasks 2>/dev/null || echo "(no Rollout yet)"
+
+echo
 echo "== What exactly is not synced or healthy yet"
 PY=$(cat << 'PYEND'
 import json, sys

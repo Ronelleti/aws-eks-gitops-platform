@@ -8,7 +8,9 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+{{- if not .Values.api.rollout.enabled }}
 ---
+# Plain rolling update. With api.rollout.enabled the Rollout in api-rollout.yaml replaces this.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,57 +27,8 @@ spec:
   selector:
     matchLabels: { app: api }
   template:
-    metadata:
-      labels:
-        app: api
-        {{- include "tasks.labels" . | nindent 8 }}
-      annotations:
-        # ConfigMap changes don't restart pods by themselves. This hash changes when the
-        # ConfigMap changes, which changes the pod template and triggers a rolling update.
-        checksum/config: {{ include (print $.Template.BasePath "/api-configmap.yaml") . | sha256sum }}
-    spec:
-      serviceAccountName: api
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels: { app: api }
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-      containers:
-        - name: api
-          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
-          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
-          ports:
-            - name: http
-              containerPort: 3000
-          envFrom:
-            - configMapRef: { name: api-config }
-          env:
-            # shown on the UI's System page and added to every log line
-            - name: NODE_NAME
-              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
-            - name: POD_NAMESPACE
-              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
-            - name: DB_USER
-              valueFrom: { secretKeyRef: { name: {{ .Values.database.credentialsSecret }}, key: username } }
-            - name: DB_PASSWORD
-              valueFrom: { secretKeyRef: { name: {{ .Values.database.credentialsSecret }}, key: password } }
-          readinessProbe:
-            httpGet: { path: /readyz, port: http }
-            periodSeconds: 5
-          livenessProbe:
-            httpGet: { path: /healthz, port: http }
-            initialDelaySeconds: 10
-            periodSeconds: 10
-          resources:
-            {{- toYaml .Values.api.resources | nindent 12 }}
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities: { drop: ["ALL"] }
+    {{- include "tasks.apiPodTemplate" . | nindent 4 }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
