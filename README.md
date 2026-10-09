@@ -348,6 +348,19 @@ Then **revert the commit** (`git revert HEAD`, push): the Git file asks for the 
 becomes `Healthy`. Until you revert, ArgoCD shows the app as Degraded: it still wants the bad version, and the
 rollout correctly refuses to promote it.
 
+**Measured results (a real run on EKS, 3x t3.large).**
+
+| What | Result |
+|---|---|
+| Demo 1, good release | Finished `Healthy` with 4 up-to-date pods and no downtime during the rollout |
+| Demo 2, bad release (`faultErrorRate: 0.5`) | The analysis measured error rates of 55.2%, 51.1% and 52.3% against the 5% limit |
+| Why it stopped | `failed (3) > failureLimit (2)`: the rollout went back to the old version on its own |
+| Time to rollback | About 90 seconds after the canary pod started |
+| Latency under load | p95 of about 32 ms in Grafana, with the API autoscaled to 4 pods |
+
+The k6 end-of-run summary of the first healthy run (p95, total requests, failed %) was not saved, so no baseline
+is listed here. Paste your own numbers in this table the next time you run the load test.
+
 **Know the limits:**
 
 - **The traffic split follows the pod count.** The Service sends each request to any pod labelled `app=api`, so with
