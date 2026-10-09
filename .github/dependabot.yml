@@ -5,21 +5,41 @@ updates:
   - package-ecosystem: npm
     directory: /apps/api
     schedule: { interval: weekly }
+    # Major versions (React 19, Vite 8, Express 5, Node 25...) change behaviour and often need code
+    # changes. They are upgraded by hand, one at a time, not by a bot PR that is red on arrival.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /apps/ui
     schedule: { interval: weekly }
+    # Major versions (React 19, Vite 8, Express 5, Node 25...) change behaviour and often need code
+    # changes. They are upgraded by hand, one at a time, not by a bot PR that is red on arrival.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
   - package-ecosystem: docker
     directory: /apps/api
     schedule: { interval: weekly }
+    # Major versions (React 19, Vite 8, Express 5, Node 25...) change behaviour and often need code
+    # changes. They are upgraded by hand, one at a time, not by a bot PR that is red on arrival.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /apps/ui
     schedule: { interval: weekly }
+    # Major versions (React 19, Vite 8, Express 5, Node 25...) change behaviour and often need code
+    # changes. They are upgraded by hand, one at a time, not by a bot PR that is red on arrival.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
