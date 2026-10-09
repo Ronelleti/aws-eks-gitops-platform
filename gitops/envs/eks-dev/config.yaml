@@ -19,3 +19,7 @@ networkPolicies:
 # the app's own metrics, alerts and Grafana dashboard (needs the monitoring application from gitops/apps/eks-dev)
 monitoring:
   enabled: true
+
+# background jobs: the queue itself is created by Terraform (infra/dev/queue.tf) and its address is injected into the Application
+worker:
+  enabled: true

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFilters, bytes, daysUntil, dueInfo, hours, nextStatus, plural, relTime, uptime } from './format';
+import { activityText, applyFilters, bytes, daysUntil, dueInfo, hours, nextStatus, plural, relTime, uptime } from './format';
 
 const NOW = new Date(2026, 9, 6, 15, 30); // 6 Oct 2026, local time
 
@@ -76,5 +76,16 @@ describe('filters', () => {
   });
   it('no filters returns everything', () => {
     expect(ids({})).toEqual([1, 2, 3]);
+  });
+});
+
+describe('activity text', () => {
+  it('shows what the background worker did', () => {
+    expect(activityText({ kind: 'processed', detail: 'Completion handled by the background worker' }))
+      .toBe('Completion handled by the background worker');
+  });
+  it('keeps the existing wording', () => {
+    expect(activityText({ kind: 'moved', detail: 'To do to Done' })).toBe('Moved from To do to Done');
+    expect(activityText({ kind: 'created', detail: '' })).toBe('Created');
   });
 });

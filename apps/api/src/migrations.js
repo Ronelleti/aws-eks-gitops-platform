@@ -79,6 +79,18 @@ const MIGRATIONS = [
       `CREATE INDEX IF NOT EXISTS activity_task_idx ON activity (task_id)`,
     ],
   },
+  {
+    id: 5,
+    name: 'processed jobs (worker idempotency)',
+    sql: [
+      // SQS delivers a message at least once. The worker records each message id here first, so a repeat is skipped.
+      `CREATE TABLE IF NOT EXISTS processed_jobs (
+         message_id TEXT PRIMARY KEY,
+         type TEXT NOT NULL,
+         processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+       )`,
+    ],
+  },
 ];
 
 const LOCK_ID = 727274; // arbitrary number identifying "the migration lock"

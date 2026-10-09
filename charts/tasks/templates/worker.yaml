@@ -1,0 +1,104 @@
+{{- if and .Values.worker.enabled .Values.queue.url }}
+# The background worker: takes jobs from the SQS queue (see apps/api/src/worker.js).
+# It runs the API image with another command, so its version always matches the API.
+# A plain Deployment (not a canary): a bad worker release shows up as a growing queue and failed jobs, not as user errors.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: worker # on EKS, Terraform ties this name to an IAM role that may read this one queue (Pod Identity)
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    app: worker
+    {{- include "tasks.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: worker }
+  template:
+    metadata:
+      labels:
+        app: worker
+        {{- include "tasks.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/api-configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: worker
+      # finish the current job and leave the long poll before Kubernetes gives up waiting
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: worker
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["node", "src/worker.js"]
+          ports:
+            - name: metrics
+              containerPort: 9100
+          envFrom:
+            - configMapRef: { name: api-config }
+          env:
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: POD_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: {{ .Values.database.credentialsSecret }}, key: username } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.database.credentialsSecret }}, key: password } }
+          livenessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+{{- if .Values.monitoring.enabled }}
+---
+# Tells Prometheus to scrape the worker's /metrics (job counts and the queue sizes)
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: tasks-worker
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: { app: worker }
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+{{- if .Values.networkPolicies.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-from-prometheus
+  labels:
+    {{- include "tasks.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app: worker }
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.monitoring.namespace }}
+      ports:
+        - port: 9100
+{{- end }}
+{{- end }}
+{{- end }}

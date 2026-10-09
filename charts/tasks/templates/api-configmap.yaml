@@ -16,3 +16,9 @@ data:
   AWS_REGION: {{ .Values.awsRegion | quote }}
   ENABLE_DEMO: {{ .Values.api.enableDemo | quote }}
   MAX_UPLOAD_BYTES: {{ mul .Values.api.maxUploadMb 1048576 | quote }}
+  {{- with .Values.queue.url }}
+  QUEUE_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.queue.dlqUrl }}
+  DLQ_URL: {{ . | quote }}
+  {{- end }}

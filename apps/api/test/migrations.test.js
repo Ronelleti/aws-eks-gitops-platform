@@ -34,7 +34,7 @@ test('several replicas starting at once do not fight over migrations', async () 
     await c.connect();
     const { rows } = await c.query('SELECT id FROM schema_migrations ORDER BY id');
     await c.end();
-    assert.deepEqual(rows.map((r) => r.id), [1, 2, 3, 4]); // each migration exactly once
+    assert.deepEqual(rows.map((r) => r.id), [1, 2, 3, 4, 5]); // each migration exactly once
   } finally { await Promise.all(apis.map((a) => a.stop())); }
 });
 

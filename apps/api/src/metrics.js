@@ -52,4 +52,8 @@ new client.Gauge({
   },
 });
 
-module.exports = { client, httpDuration, dbDuration, tasksCreated, tasksCompleted, attachmentsUploaded };
+const jobsEnqueued = new client.Counter({
+  name: 'jobs_enqueued_total', help: 'Background jobs the API sent to the queue', labelNames: ['result'],
+});
+
+module.exports = { client, jobsEnqueued, httpDuration, dbDuration, tasksCreated, tasksCompleted, attachmentsUploaded };

@@ -26,6 +26,19 @@ module.exports = {
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
   },
 
+  // Background jobs (SQS). Empty QUEUE_URL = no queue: the API skips enqueueing and the worker will not start.
+  queue: {
+    url: process.env.QUEUE_URL || '',
+    dlqUrl: process.env.DLQ_URL || '', // only read for the queue-depth metrics
+    region: process.env.AWS_REGION || 'us-east-1',
+    // Only for tests and local SQS clones. On AWS leave unset: credentials come from Pod Identity.
+    endpoint: process.env.SQS_ENDPOINT || undefined,
+  },
+  worker: {
+    port: num(process.env.WORKER_PORT, 9100), // /healthz and /metrics
+    waitSeconds: num(process.env.WORKER_WAIT_SECONDS, 20), // SQS long polling
+  },
+
   maxUploadBytes: num(process.env.MAX_UPLOAD_BYTES, 10 * 1024 * 1024),
   enableDemo: process.env.ENABLE_DEMO !== 'false', // POST /api/demo/seed
 

@@ -81,4 +81,98 @@ async function startApi({ port, database, s3Port, bucket = 'test-bucket', extraE
   return { base, child, call, stop: () => new Promise((r) => { child.once('exit', r); child.kill('SIGTERM'); }) };
 }
 
-module.exports = { DB, withAdmin, freshDatabase, startFakeS3, startApi };
+// Enough of SQS for the JSON protocol the SDK uses: SendMessage, ReceiveMessage, DeleteMessage, GetQueueAttributes.
+// A received message stays hidden for `visibilitySeconds`, then comes back (like the real visibility timeout).
+// Signatures are not checked.
+function startFakeSqs(port, { visibilitySeconds = 1 } = {}) {
+  const crypto = require('crypto');
+  const messages = []; // { id, body, receipt, hiddenUntil, receives }
+  const log = [];
+  let counter = 0;
+  const md5 = (b) => crypto.createHash('md5').update(b).digest('hex');
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (d) => chunks.push(d));
+    req.on('end', async () => {
+      const action = String(req.headers['x-amz-target'] || '').split('.')[1];
+      const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
+      log.push(action);
+      const reply = (json) => {
+        res.writeHead(200, { 'Content-Type': 'application/x-amz-json-1.0' });
+        res.end(JSON.stringify(json));
+      };
+      if (action === 'SendMessage') {
+        counter += 1;
+        messages.push({ id: `msg-${counter}`, body: body.MessageBody, hiddenUntil: 0, receives: 0 });
+        return reply({ MessageId: `msg-${counter}`, MD5OfMessageBody: md5(body.MessageBody) });
+      }
+      if (action === 'ReceiveMessage') {
+        const now = Date.now();
+        const out = [];
+        for (const m of messages) {
+          if (out.length < (body.MaxNumberOfMessages || 1) && m.hiddenUntil <= now) {
+            m.hiddenUntil = now + visibilitySeconds * 1000;
+            m.receives += 1;
+            m.receipt = `rh-${m.id}-${m.receives}`;
+            out.push({ MessageId: m.id, ReceiptHandle: m.receipt, Body: m.body, MD5OfBody: md5(m.body) });
+          }
+        }
+        if (!out.length) await new Promise((r) => setTimeout(r, 300)); // a short "long poll"
+        return reply({ Messages: out });
+      }
+      if (action === 'DeleteMessage') {
+        const i = messages.findIndex((m) => m.receipt === body.ReceiptHandle);
+        if (i >= 0) messages.splice(i, 1);
+        return reply({});
+      }
+      if (action === 'GetQueueAttributes') {
+        const now = Date.now();
+        return reply({ Attributes: {
+          ApproximateNumberOfMessages: String(messages.filter((m) => m.hiddenUntil <= now).length),
+          ApproximateNumberOfMessagesNotVisible: String(messages.filter((m) => m.hiddenUntil > now).length),
+        } });
+      }
+      res.writeHead(400, { 'Content-Type': 'application/x-amz-json-1.0' });
+      return res.end(JSON.stringify({ __type: 'InvalidAction', message: `fake SQS does not know ${action}` }));
+    });
+  });
+  const add = (body) => { counter += 1; messages.push({ id: `msg-${counter}`, body, hiddenUntil: 0, receives: 0 }); return `msg-${counter}`; };
+  return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve({ server, messages, log, add })));
+}
+
+// The real worker as a child process.
+async function startWorker({ port, database, sqsPort, extraEnv = {} }) {
+  const env = {
+    ...process.env,
+    WORKER_PORT: String(port), WORKER_WAIT_SECONDS: '1',
+    QUEUE_URL: `http://127.0.0.1:${sqsPort}/000000000000/jobs`, SQS_ENDPOINT: `http://127.0.0.1:${sqsPort}`,
+    DB_HOST: DB.host, DB_PORT: String(DB.port), DB_USER: DB.user, DB_PASSWORD: DB.password, DB_NAME: database,
+    LOG_LEVEL: 'warn', APP_VERSION: 'test', HOSTNAME: `test-worker-${port}`,
+    AWS_REGION: 'eu-north-1', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test',
+    ...extraEnv,
+  };
+  const child = spawn('node', [path.join(__dirname, '..', 'src', 'worker.js')], { env, stdio: ['ignore', 'inherit', 'inherit'] });
+  const base = `http://127.0.0.1:${port}`;
+  for (let i = 0; i < 100; i += 1) {
+    try { if ((await fetch(`${base}/healthz`)).status === 200) break; } catch { /* not listening yet */ }
+    await new Promise((r) => setTimeout(r, 100));
+    if (i === 99) { child.kill(); throw new Error('worker did not start'); }
+  }
+  return {
+    base, child,
+    metrics: async () => (await fetch(`${base}/metrics`)).text(),
+    stop: () => new Promise((r) => { child.once('exit', (code) => r(code)); child.kill('SIGTERM'); }),
+  };
+}
+
+async function waitFor(fn, { timeoutMs = 10000, everyMs = 100 } = {}) {
+  const end = Date.now() + timeoutMs;
+  for (;;) {
+    const v = await fn();
+    if (v) return v;
+    if (Date.now() > end) throw new Error('waitFor: timed out');
+    await new Promise((r) => setTimeout(r, everyMs));
+  }
+}
+
+module.exports = { DB, withAdmin, freshDatabase, startFakeS3, startFakeSqs, startWorker, waitFor, startApi };

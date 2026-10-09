@@ -28,6 +28,21 @@ jobs:
             # shellcheck disable=SC2086
             helm lint charts/tasks $args
           done
+      - name: Render the worker, its monitoring and its alerts
+        # They only exist when a queue address is set (Terraform injects it on EKS), so the loop above never renders them.
+        run: |
+          set -e
+          args="-f gitops/envs/eks-dev/config.yaml -f gitops/envs/eks-dev/tasks.yaml"
+          args="$args --set queue.url=https://sqs.eu-north-1.amazonaws.com/000000000000/example-jobs"
+          args="$args --set queue.dlqUrl=https://sqs.eu-north-1.amazonaws.com/000000000000/example-jobs-dlq"
+          args="$args --set database.host=db.example --set api.s3Bucket=example"
+          # shellcheck disable=SC2086
+          helm lint charts/tasks $args
+          # shellcheck disable=SC2086
+          helm template tasks charts/tasks $args > /tmp/rendered.yaml
+          for expected in "name: worker" "kind: PodMonitor" "alert: TasksDeadLetterQueueNotEmpty" "QUEUE_URL"; do
+            grep -q "$expected" /tmp/rendered.yaml || { echo "missing from the rendered chart: $expected"; exit 1; }
+          done
       - name: Lint the db-secret chart
         run: helm lint charts/db-secret --set secretArn=arn:aws:secretsmanager:eu-north-1:000000000000:secret:example
 

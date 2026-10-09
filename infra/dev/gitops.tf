@@ -53,6 +53,10 @@ resource "helm_release" "tasks_app" {
               api = {
                 s3Bucket = aws_s3_bucket.attachments.bucket
               }
+              queue = {
+                url    = aws_sqs_queue.jobs.url
+                dlqUrl = aws_sqs_queue.jobs_dlq.url
+              }
               networkPolicies = {
                 # the ALB's traffic arrives from IPs inside the VPC
                 ingressControllerCIDRs = [module.vpc.vpc_cidr]
@@ -84,6 +88,7 @@ resource "helm_release" "tasks_app" {
     helm_release.db_secret,
     helm_release.metrics_server,
     aws_eks_pod_identity_association.api,
+    aws_eks_pod_identity_association.worker,
   ]
 }
 
@@ -128,5 +133,6 @@ resource "helm_release" "platform_apps" {
     helm_release.argocd,
     helm_release.db_secret, # creates the ClusterSecretStore that the platform's ExternalSecrets use
     aws_secretsmanager_secret_version.grafana_admin,
+    aws_eks_pod_identity_association.alertmanager, # must exist before the Alertmanager pod starts, or it gets no credentials
   ]
 }

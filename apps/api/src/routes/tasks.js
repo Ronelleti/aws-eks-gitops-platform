@@ -3,6 +3,7 @@ const config = require('../config');
 const { query, tx } = require('../db');
 const metrics = require('../metrics');
 const s3 = require('../s3');
+const queue = require('../queue');
 const { HttpError, parseTaskInput, parseId, failIfInvalid } = require('../validate');
 
 const router = express.Router();
@@ -116,7 +117,14 @@ router.patch('/:id', h(async (req, res) => {
   });
 
   if (!result) throw new HttpError(404, 'Task not found.');
-  if (result.moved && result.moved.to === 'done') metrics.tasksCompleted.inc();
+  if (result.moved && result.moved.to === 'done') {
+    metrics.tasksCompleted.inc();
+    // hand the follow-up work to the background worker (a quick, best-effort send: the task is already saved)
+    if (queue.enabled) {
+      const queued = await queue.sendJob({ type: 'task.completed', taskId: id, title: result.task.title, requestId: req.id });
+      metrics.jobsEnqueued.inc({ result: queued ? 'queued' : 'failed' });
+    }
+  }
   const { rows } = await query(`SELECT t.*, ${withCount} FROM tasks t WHERE t.id = $1`, [id], 'get');
   res.json(rows[0]);
 }));

@@ -82,6 +82,7 @@ export function activityText(a) {
     case 'attached': return `Attached ${a.detail}`;
     case 'detached': return `Removed ${a.detail}`;
     case 'deleted': return 'Deleted';
+    case 'processed': return a.detail;
     default: return a.kind;
   }
 }

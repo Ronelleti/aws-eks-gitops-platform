@@ -33,6 +33,18 @@ api:
     enabled: true
     minAvailable: 1
 
+# Background jobs: the API puts a job on an SQS queue when a task is finished, the worker handles it.
+# The worker is the same image as the API (so it always runs the same version) started with another command.
+queue:
+  url: ""                    # SQS queue URL. Empty = no queue (the API skips it, the worker is not deployed). Set by Terraform on EKS
+  dlqUrl: ""                 # dead-letter queue URL, only used to export its size as a metric
+worker:
+  enabled: false             # needs queue.url as well
+  replicas: 1
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 192Mi }
+
 ui:
   image:
     repository: tasks-ui

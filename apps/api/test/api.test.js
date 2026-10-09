@@ -142,7 +142,7 @@ test('system information', async () => {
   const s = (await api.call('GET', '/api/system')).json;
   assert.equal(s.instance.pod, 'test-pod-3955');
   assert.equal(s.database.ok, true);
-  assert.equal(s.database.schemaVersion, 4);
+  assert.equal(s.database.schemaVersion, 5);
   assert.ok(s.database.latencyMs > 0);
   assert.equal(s.storage.ok, true);
   assert.ok(s.served.total > 0);
