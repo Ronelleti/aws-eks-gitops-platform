@@ -31,7 +31,7 @@ jobs:
         working-directory: apps/${{ matrix.app }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       # Only packages that end up in the image (--omit=dev). Fails on HIGH or CRITICAL advisories.
