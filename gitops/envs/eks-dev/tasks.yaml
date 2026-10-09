@@ -2,6 +2,7 @@
 # The image tags below are updated automatically by the app-ci workflow - don't edit them by hand.
 appEnv: eks-dev
 api:
+  logLevel: debug
   rollout:
     enabled: true # canary releases with automatic rollback (Argo Rollouts, see gitops/apps/eks-dev/rollouts.yaml)
   image:
