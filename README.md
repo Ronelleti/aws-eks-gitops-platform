@@ -360,6 +360,16 @@ kubectl logs -n tasks deploy/worker -f                   # "job failed, it will 
 aws sqs receive-message --queue-url "$(terraform -chdir=infra/dev output -raw jobs_dlq_url)"   # the message is here
 ```
 
+**Measured results (a real run on EKS).**
+
+| What | Result |
+|---|---|
+| Task moved to Done | The worker logged `job handled` with `"result":"ok"` the same second |
+| Message that is not valid JSON | Failed 3 times, exactly 60 seconds apart (the visibility timeout), then SQS moved it to the dead-letter queue |
+| Dead-letter queue | `ApproximateNumberOfMessages` went to 1 about 3 minutes after the message was sent |
+| Alert | `TasksDeadLetterQueueNotEmpty` was firing in Prometheus within 2 minutes of that |
+| Email | `[FIRING] TasksDeadLetterQueueNotEmpty` arrived through Alertmanager and SNS, minutes after the message was sent |
+
 This only runs on EKS. The local `docker compose` and kind setups have no queue: the API skips it when `QUEUE_URL` is empty.
 
 ### Alerts: Prometheus, Alertmanager, SNS, your inbox

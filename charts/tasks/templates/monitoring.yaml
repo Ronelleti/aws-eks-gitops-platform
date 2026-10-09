@@ -74,7 +74,7 @@ spec:
             summary: No worker pod is ready - background jobs are piling up in the queue
             runbook: kubectl get pods -n {{ .Release.Namespace }} -l app=worker, then kubectl logs deploy/worker
         - alert: TasksQueueBacklog
-          expr: max(queue_messages{namespace="{{ .Release.Namespace }}", queue="jobs", state="visible"}) > 50
+          expr: max by (namespace) (queue_messages{namespace="{{ .Release.Namespace }}", queue="jobs", state="visible"}) > 50
           for: 10m
           labels: { severity: warning }
           annotations:
@@ -86,7 +86,7 @@ spec:
           annotations:
             summary: The worker failed more than 5 jobs in 10 minutes
         - alert: TasksDeadLetterQueueNotEmpty
-          expr: max(queue_messages{namespace="{{ .Release.Namespace }}", queue="dlq", state="visible"}) > 0
+          expr: max by (namespace) (queue_messages{namespace="{{ .Release.Namespace }}", queue="dlq", state="visible"}) > 0
           for: 1m
           labels: { severity: critical }
           annotations:
