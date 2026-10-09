@@ -410,6 +410,82 @@ and try again) and that `kubectl get sa alertmanager -n monitoring` exists.
 If a default alert from kube-prometheus-stack turns out to be noise on this small cluster, add it to the first route in
 `gitops/envs/eks-dev/monitoring.yaml` (the `'alertname =~ "Watchdog|InfoInhibitor"'` line) to send it nowhere.
 
+### HTTPS with CloudFront (done by hand in the console)
+
+The ALB has no domain, so it cannot have a certificate. CloudFront gives the app an `https://<id>.cloudfront.net` address with a valid
+certificate and no domain. It was created by hand in the console with the **Free** plan, to learn how it works before writing it as Terraform.
+
+| Setting | Value | Why |
+|---|---|---|
+| Origin | the ALB hostname (changes every session) | the ALB is rebuilt each time |
+| Protocol to the origin | **HTTP only** | the ALB has no certificate; the console's "recommended" setting was HTTPS only, which would have returned 502 |
+| Viewer protocol policy | Redirect HTTP to HTTPS | |
+| Allowed methods | GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE | the API writes data |
+| Cache policy | CachingDisabled | the API returns live data; a cache could show stale tasks |
+| Origin request policy | AllViewer | cookies, query strings and headers reach the app |
+| Security | Free-plan managed WAF in **monitor mode** | counts, never blocks |
+
+**Measured** (from a Windows PC, a few minutes after the distribution was created; the name first resolved without addresses and
+answered after a few minutes):
+
+- `https://<id>.cloudfront.net/` returned **200**; `http://` returned **301** to the `https://` address.
+- `GET /api/tasks` returned `[]` on the empty database; a `POST /api/tasks` created a task with its id and timestamps, and a second `GET`
+  listed it. So writes work through CloudFront.
+
+**Limits to know**
+
+- Only the browser-to-CloudFront leg is encrypted. CloudFront to the ALB is plain HTTP inside AWS's network, because the ALB has no certificate.
+- With caching off, CloudFront provides the HTTPS front door, not a speed-up.
+- The Free plan's WAF was created in `us-east-1` (CloudFront's global scope), so the account's policy allows it. It must be removed together with the distribution.
+- The ALB hostname is new in every session, so a distribution made by hand points at a load balancer that no longer exists after `eks-down.sh`. Codifying it needs a stable origin or recreating the distribution each session.
+- Not tested here: the pages in a browser behind CloudFront (only `curl` was recorded), file attachments (the upload goes straight to S3 with a presigned URL, not through CloudFront), and long-running requests.
+
+### WAF in front of the ALB (done by hand, with the AWS CLI)
+
+A regional AWS WAF web ACL, attached to the ALB, with one rule: **block an IP address that sends more than 300 requests in one minute**.
+The console's new "protection pack" wizard did not show a region selector in this account, so the same steps were done with the CLI,
+which sets the region and scope explicitly:
+
+```bash
+# 1. find the ALB
+alb=$(aws elbv2 describe-load-balancers --region eu-north-1 \
+  --query "LoadBalancers[?starts_with(LoadBalancerName,'k8s-tasks')].LoadBalancerArn | [0]" --output text)
+
+# 2. rules.json: one rate-based rule, 300 requests per 60 s per source IP, action Block
+[{"Name":"rate-limit-per-ip","Priority":0,
+  "Statement":{"RateBasedStatement":{"Limit":300,"EvaluationWindowSec":60,"AggregateKeyType":"IP"}},
+  "Action":{"Block":{}},
+  "VisibilityConfig":{"SampledRequestsEnabled":true,"CloudWatchMetricsEnabled":true,"MetricName":"rate-limit-per-ip"}}]
+
+# 3. create the web ACL (default action: allow) and attach it
+aws wafv2 create-web-acl --name tasks-alb-waf --scope REGIONAL --region eu-north-1 \
+  --default-action "Allow={}" \
+  --visibility-config "SampledRequestsEnabled=true,CloudWatchMetricsEnabled=true,MetricName=tasks-alb-waf" \
+  --rules file://rules.json
+aws wafv2 associate-web-acl --web-acl-arn <web-acl-arn> --resource-arn "$alb" --region eu-north-1
+```
+
+**Measured** (one Windows PC against the ALB address, `curl --parallel`, 1,500 requests per burst):
+
+| Test | Result |
+|---|---|
+| First burst, a few seconds after attaching the web ACL | 1,500 × **200** (the rate rule had not reacted yet) |
+| Three more bursts, 20 s apart | 1,500 × **403** each |
+| A single request seconds after the bursts | 403 |
+| Polling every 15 s afterwards | 403, 403, 403, then **200** about 47 s after polling began, roughly 90 s after the flood stopped |
+
+So the rule needs a short time to react (AWS documents up to about 30 seconds), blocks the whole flood once it has, and releases the address by itself when the rate drops.
+
+**What this teaches and what to watch for**
+
+- **A rate rule is per source IP.** Behind CloudFront the ALB sees only CloudFront's addresses, so a rate limit there would count all visitors together. For the real setup, rate-limit at CloudFront, or aggregate on the `X-Forwarded-For` header. The test above went straight to the ALB address on purpose.
+- A normal person clicking around the app stays well below 300 requests a minute; the k6 load test sends several times that from one IP, so `scripts/load-test.sh` against the ALB would now be blocked.
+- **The web ACL attachment does not survive `eks-down.sh`**: the ALB is deleted and recreated each session. In Terraform the ingress would carry the controller annotation `alb.ingress.kubernetes.io/wafv2-acl-arn` so every new ALB gets it automatically. That annotation has not been tested here.
+- **Cost:** roughly $5 a month for the web ACL plus $1 a month for the rule plus a small per-request fee, billed by the hour (prices from memory, not checked). Delete the web ACL after a test.
+- Attaching a brand-new web ACL can fail for a short while with `WAFUnavailableEntityException`; retrying after a few seconds worked here on the first retry loop.
+
+**Not tested:** managed rule groups (SQL injection, common vulnerabilities), count-mode first, and behaviour with the real client IP behind CloudFront.
+
 ### Backup and restore drill (done by hand in the console)
 
 A backup you have never restored is only a hope. This drill proves the database can be brought back, and shows what a restore really is.
@@ -685,7 +761,7 @@ cents for ECR and S3).
 
 **Limitations of the current build**
 
-- **HTTP only.** The ALB has no domain or certificate.
+- **The ALB itself speaks HTTP only.** It has no domain or certificate. HTTPS exists only in front of it, through a CloudFront distribution made by hand (see "HTTPS with CloudFront"); that distribution is not in Terraform yet.
 - The Kubernetes API endpoint is **public** (open to `0.0.0.0/0`, but every request needs valid AWS IAM credentials).
   Restrict it with `api_allowed_cidrs` if you want.
 - The **database password rotates** (RDS rotates it about every 7 days). External Secrets refreshes the
@@ -699,7 +775,7 @@ cents for ECR and S3).
 
 - **CloudWatch alarms for the AWS side** (EKS, RDS, ALB) into the same SNS topic. Prometheus alerts about the app and the cluster
   already reach your inbox through Alertmanager; they cannot see a dead cluster or a stopped database.
-- **HTTPS and a custom domain** (ACM certificate and Route 53).
+- **CloudFront and the WAF in Terraform** (both were done by hand once; see the two sections above), and a **custom domain** (ACM certificate and Route 53).
 - A worker that does something more useful than writing an activity line (the queue, retries, idempotency and the dead-letter queue are the point).
 - An **ops VM** configured with Ansible (the load test already runs from your computer with k6).
 
