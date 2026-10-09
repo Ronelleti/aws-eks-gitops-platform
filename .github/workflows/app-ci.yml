@@ -46,7 +46,7 @@ jobs:
       run:
         working-directory: apps/api
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -64,7 +64,7 @@ jobs:
       run:
         working-directory: apps/ui
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -85,7 +85,7 @@ jobs:
       matrix:
         app: [api, ui]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Keys of a dedicated IAM user that can ONLY push to our ECR repos
       # (the account's SCP blocks the keyless OIDC setup). Stored as GitHub secrets.
@@ -164,7 +164,7 @@ jobs:
     permissions:
       contents: write # commit the new tag
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set the new image tags in gitops/envs/eks-dev/tasks.yaml
         run: |
