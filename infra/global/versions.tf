@@ -7,6 +7,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    archive = {
+      source  = "hashicorp/archive" # zips the watchdog Lambda code
+      version = "~> 2.7"
+    }
   }
 
   # Each root module (global, dev) has its own state file in the same bucket.

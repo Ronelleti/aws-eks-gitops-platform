@@ -27,3 +27,6 @@ node_modules/
 *accessKeys*.csv
 kubeconfig*
 tfplan
+
+# built by Terraform (Lambda zip)
+.build/

@@ -171,6 +171,30 @@ terraform apply tfplan
 cd ../..
 ```
 
+### 4b. Alerts, budget and cost watchdog (same layer)
+
+`infra/global` also holds the safety net, so it keeps working when the dev environment is destroyed:
+
+- an **SNS topic** that emails you,
+- a **monthly budget** (default $20) that emails at 50%, 80% and 100% of actual spend, counted before credits,
+- a **cost watchdog**: a small Lambda that runs every hour and emails you if an EKS cluster or RDS database has been up for more than 4 hours (it only reads, it never deletes anything).
+
+Your email address stays out of Git. Create the git-ignored file `infra/global/terraform.tfvars`:
+
+```hcl
+alert_email = "you@example.com"
+```
+
+Then run the same commands as step 4 (`terraform init -upgrade` first, because there is a new provider).
+AWS sends a **confirmation email**; click "Confirm subscription" or nothing is delivered.
+
+To test the watchdog without waiting, lower the limit and invoke it once:
+
+```bash
+terraform apply -var watchdog_max_hours=0.01     # only matters while the dev environment is up
+aws lambda invoke --function-name aws-eks-gitops-platform-cost-watchdog /tmp/out.json && cat /tmp/out.json
+```
+
 ### 5. Give GitHub the CI credentials
 
 Terraform deliberately does not create this access key, because a key created by Terraform would be
