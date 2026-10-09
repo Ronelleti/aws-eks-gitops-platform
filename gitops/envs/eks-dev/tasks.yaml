@@ -3,7 +3,6 @@
 appEnv: eks-dev
 api:
   logLevel: debug
-  faultErrorRate: 0.5
   rollout:
     enabled: true # canary releases with automatic rollback (Argo Rollouts, see gitops/apps/eks-dev/rollouts.yaml)
   image:
