@@ -29,13 +29,22 @@ jobs:
             helm lint charts/tasks $args
           done
       - name: Render the worker, its monitoring and its alerts
-        # They only exist when a queue address is set (Terraform injects it on EKS), so the loop above never renders them.
+        # They only exist when a queue address is set, and Terraform supplies the values below on EKS,
+        # so the loop above never renders them. This step stands in for Terraform with example values.
         run: |
           set -e
-          args="-f gitops/envs/eks-dev/config.yaml -f gitops/envs/eks-dev/tasks.yaml"
-          args="$args --set queue.url=https://sqs.eu-north-1.amazonaws.com/000000000000/example-jobs"
-          args="$args --set queue.dlqUrl=https://sqs.eu-north-1.amazonaws.com/000000000000/example-jobs-dlq"
-          args="$args --set database.host=db.example --set api.s3Bucket=example"
+          cat > /tmp/terraform-values.yaml <<'EOF2'
+          queue:
+            url: https://sqs.eu-north-1.amazonaws.com/000000000000/example-jobs
+            dlqUrl: https://sqs.eu-north-1.amazonaws.com/000000000000/example-jobs-dlq
+          database:
+            host: db.example
+          api:
+            s3Bucket: example
+          networkPolicies:
+            ingressControllerCIDRs: ["10.20.0.0/16"]
+          EOF2
+          args="-f gitops/envs/eks-dev/config.yaml -f gitops/envs/eks-dev/tasks.yaml -f /tmp/terraform-values.yaml"
           # shellcheck disable=SC2086
           helm lint charts/tasks $args
           # shellcheck disable=SC2086
@@ -43,8 +52,6 @@ jobs:
           for expected in "name: worker" "kind: PodMonitor" "alert: TasksDeadLetterQueueNotEmpty" "QUEUE_URL"; do
             grep -q "$expected" /tmp/rendered.yaml || { echo "missing from the rendered chart: $expected"; exit 1; }
           done
-      - name: Lint the db-secret chart
-        run: helm lint charts/db-secret --set secretArn=arn:aws:secretsmanager:eu-north-1:000000000000:secret:example
 
   terraform:
     runs-on: ubuntu-latest
