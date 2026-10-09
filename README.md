@@ -410,6 +410,47 @@ and try again) and that `kubectl get sa alertmanager -n monitoring` exists.
 If a default alert from kube-prometheus-stack turns out to be noise on this small cluster, add it to the first route in
 `gitops/envs/eks-dev/monitoring.yaml` (the `'alertname =~ "Watchdog|InfoInhibitor"'` line) to send it nowhere.
 
+### Backup and restore drill (done by hand in the console)
+
+A backup you have never restored is only a hope. This drill proves the database can be brought back, and shows what a restore really is.
+
+**What was done** (cluster up, RDS instance `aws-eks-gitops-platform-dev`, automated backups enabled with 1 day retention):
+
+1. Created five tasks in the app (`drill 1` to `drill 5`).
+2. RDS → the instance → **Actions → Take snapshot**, named `manual-drill-1`. Waited until it was `Available`.
+3. Deleted `drill 2` and `drill 3` in the app (this is the "accident").
+4. RDS → Snapshots → `manual-drill-1` → **Restore snapshot**, into a **new** instance `drill-restore` with:
+   single-AZ (the form defaults to Multi-AZ), Burstable class `db.t4g.micro` (the form lists `db.m5` first),
+   the project VPC (the default VPC is preselected), and the security group `aws-eks-gitops-platform-dev-rds` chosen explicitly.
+5. Queried the restored instance from a pod inside the cluster (the database is private, so it cannot be reached from a laptop):
+
+   ```bash
+   kubectl run psql-restore -n tasks --rm -it --restart=Never \
+     --image=public.ecr.aws/docker/library/postgres:16 \
+     --env="PGPASSWORD=$(kubectl get secret db-credentials -n tasks -o jsonpath='{.data.password}' | base64 -d)" \
+     -- psql "host=<restored-endpoint> dbname=tasks user=tasks sslmode=require" \
+     -c "select id, title, status from tasks order by id;"
+   ```
+
+6. Deleted `drill-restore` (no final snapshot, no retained automated backups) and the manual snapshot, then confirmed with
+   `aws rds describe-db-instances` and `describe-db-snapshots --snapshot-type manual` that only the real instance remained.
+
+**Measured result:** the restored database listed **all five tasks, including the two deleted after the snapshot**, while the live
+database was still missing them. The restored instance accepted the same password as the cluster's `db-credentials` secret.
+
+**What this teaches**
+
+- A restore **never overwrites** the original. It creates a new instance with a **new endpoint**, so the application has to be
+  pointed at it (or the data copied back). Plan for that before you need it.
+- The restore form does not remember the original's network settings: VPC, subnet group, security group, Multi-AZ and instance
+  class all have to be chosen again, and a wrong security group looks like a connection timeout.
+- A snapshot restores to the moment it was taken. **Point-in-time restore** (from the automated backups) can go to any second
+  inside the retention window, but its latest restorable time runs a few minutes behind. It was not run in this drill.
+- **Cost and cleanup:** a restored instance bills like any other and would block `terraform destroy` of the VPC. A manual
+  snapshot survives the destroy and keeps billing for storage until deleted. Automated backups are deleted together with the instance.
+
+**Not tested:** point-in-time restore, restoring with Terraform, and switching the running application to the restored endpoint.
+
 ### Canary releases and load testing
 
 The API is released as a **canary** (Argo Rollouts, installed by `gitops/apps/eks-dev/rollouts.yaml`). When the API's
@@ -652,7 +693,7 @@ cents for ECR and S3).
   hour-long sessions, but a long-lived environment would need a tool that restarts pods on secret changes.
 - The **attachments bucket allows any CORS origin**, because the ALB hostname is not known in advance.
   The presigned URL is the real authorization.
-- The database is single-AZ with `skip_final_snapshot`. These are lab settings.
+- The database is single-AZ with `skip_final_snapshot`. These are lab settings. Because of that, `terraform destroy` leaves no final backup; a restore drill (above) is only possible while the cluster is up.
 
 **Not built yet**
 
