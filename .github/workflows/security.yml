@@ -1,0 +1,68 @@
+# Supply-chain and configuration checks. No AWS access needed.
+#   dependencies  known vulnerabilities in the npm packages the apps use
+#   config-scan   insecure settings in Terraform, Dockerfiles and the workflows themselves (Checkov)
+#   sbom          a "bill of materials" listing every package inside each app
+# It also runs every Monday, because new vulnerabilities are published for code that hasn't changed.
+name: security
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/**", "infra/**", ".github/**", ".checkov.yaml"]
+  pull_request:
+    paths: ["apps/**", "infra/**", ".github/**", ".checkov.yaml"]
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependencies:
+    name: npm audit (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, ui]
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Only packages that end up in the image (--omit=dev). Fails on HIGH or CRITICAL advisories.
+      # The audit reads package-lock.json, so nothing needs to be installed first.
+      - run: npm audit --omit=dev --audit-level=high
+
+  config-scan:
+    name: checkov (terraform, dockerfile, workflows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Checkov (version pinned so a new release can't change the result by itself)
+        run: pip install checkov==3.3.26
+      # Skips and their reasons are in .checkov.yaml. Any NEW finding fails this job.
+      - run: checkov --config-file .checkov.yaml
+
+  sbom:
+    name: sbom (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, ui]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Generate the software bill of materials
+        uses: anchore/sbom-action@v0
+        with:
+          path: apps/${{ matrix.app }}
+          format: cyclonedx-json
+          artifact-name: sbom-${{ matrix.app }}.cdx.json

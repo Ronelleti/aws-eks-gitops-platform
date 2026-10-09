@@ -10,6 +10,10 @@ on:
     paths: ["apps/**", ".github/workflows/app-ci.yml"]
   workflow_dispatch: # manual "Run workflow" button
 
+# default for every job; jobs that need more (promote writes to Git) ask for it themselves
+permissions:
+  contents: read
+
 # never run two pipelines for the same branch at once (they'd race on the gitops commit)
 concurrency:
   group: app-ci-${{ github.ref }}

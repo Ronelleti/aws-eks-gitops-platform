@@ -32,6 +32,15 @@ resource "aws_vpc" "this" {
   tags = { Name = var.name }
 }
 
+# The VPC's built-in "default" security group allows all traffic between its members.
+# Nothing here uses it (EKS and RDS have their own groups), so strip every rule:
+# a resource that is attached to it by mistake then gets no network access at all.
+resource "aws_default_security_group" "this" {
+  vpc_id = aws_vpc.this.id
+
+  tags = { Name = "${var.name}-default-unused" }
+}
+
 resource "aws_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
 

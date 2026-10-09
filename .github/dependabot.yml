@@ -1,0 +1,31 @@
+# Dependabot opens a pull request when a newer version of something we depend on exists.
+# CI (tests, security checks) runs on each PR, so you merge only what passes.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /apps/api
+    schedule: { interval: weekly }
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /apps/ui
+    schedule: { interval: weekly }
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /apps/api
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /apps/ui
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: terraform
+    directory: /infra/global
+    schedule: { interval: weekly }
+  - package-ecosystem: terraform
+    directory: /infra/dev
+    schedule: { interval: weekly }

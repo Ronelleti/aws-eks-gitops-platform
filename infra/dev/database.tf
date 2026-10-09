@@ -51,6 +51,7 @@ resource "aws_db_instance" "this" {
   multi_az               = false # a lab: one AZ is enough, and half the price
 
   backup_retention_period    = 1
+  copy_tags_to_snapshot      = true # snapshots keep the Project tag, so they show up in cost reports
   auto_minor_version_upgrade = true
   apply_immediately          = true
 
