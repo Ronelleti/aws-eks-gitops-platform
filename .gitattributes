@@ -1,0 +1,7 @@
+# Keep line endings the same on every machine.
+# Shell scripts break with CRLF (bash reports "$\r: command not found").
+* text=auto eol=lf
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
